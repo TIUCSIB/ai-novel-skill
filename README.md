@@ -127,12 +127,15 @@ python $S/export.py        "我的书" --format epub
 ```
 ├── SKILL.md              # 工作流主文件(agent 的入口与调度表)
 ├── README.md / CHANGELOG.md / LICENSE
-├── references/           # 13 份按需加载的参考文档
+├── references/           # 16 份按需加载的参考文档
 │   ├── ledger-schema.md      # 台账与章计划/章分析的字段定义
 │   ├── rules.json            # 96 条分级去 AI 味规则库(数据)
 │   ├── rules.md              # 规则模型说明与维护纪律
 │   ├── ai-taste.md           # AI 味对比例句库 + 密度警戒线 + 修订工序
 │   ├── arc-library.md        # 13 种节奏弧模板
+│   ├── arc-audit.md          # 弧末/卷末冷却审计九步全套
+│   ├── steering.md           # 中途干预分诊表 + 波及面查法 + 铁律
+│   ├── import-existing.md    # 接手旧稿(拆书导入)六步
 │   ├── review-rubric.md      # 七维审校细则 + 盲审 subagent 派发模板
 │   └── craft / style-guide / character-workshop / reader-sim / research-material / style-profile / model-routing
 ├── scripts/              # 13 个纯标准库 Python 脚本

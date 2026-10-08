@@ -16,7 +16,7 @@ python .agents/skills/ai-novel/tests/run_tests.py   # 16 个用例,~2 秒,全绿
 - [ ] 技能触发(ai-novel 被加载)
 - [ ] 先做题材调研 + 追问题材细节/目标篇幅/视角(而不是直接动手建项目)
 - [ ] 用户确认后:`init_project.py` 建骨架,且**自动 git init + 首次提交**
-- [ ] 骨架完整:`outlines/compass.md`、`bible/lexicon.md`、`bible/power_matrix.md`、`ledger/organizations.json` 均存在
+- [ ] 骨架完整:`outline/compass.md`、`bible/lexicon.md`、`bible/power_matrix.md`、`ledger/organizations.json` 均存在
 - [ ] 立项流程走角色工作坊(主角团 80 问档)
 
 ## 用例 2:章节循环顺序
