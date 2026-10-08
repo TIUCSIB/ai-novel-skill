@@ -535,6 +535,27 @@ class Regression(unittest.TestCase):
         (self.proj / "style/profile.md").unlink()
         self._write("ledger/terms.json", json.dumps({"terms": []}, ensure_ascii=False))
 
+    # ---------- t23: BM25 全文检索(search_corpus)+ pack 细节召回 ----------
+    def test_t23_search_corpus(self):
+        p = run("search_corpus.py", self.proj, "文字内容", "--top", "3")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("第1章", p.stdout, "查询应命中含该词的章节")
+        # --json 可解析
+        import json as _j
+        p2 = run("search_corpus.py", self.proj, "--auto", "1", "--json")
+        self.assertEqual(p2.returncode, 0, p2.stderr)
+        data = _j.loads(p2.stdout)
+        self.assertIsInstance(data, list)
+        # context_pack 的细节召回段:n>4 且计划词能召回旧章
+        self._write("outline/chapter-015.md",
+                    "# 第15章 计划\n出场角色: 主角\n节拍: 文字内容再次出现的地方\n")
+        p3 = run("context_pack.py", self.proj, 15)
+        self.assertEqual(p3.returncode, 0, p3.stderr)
+        self.assertIn("P1 细节召回", p3.stdout)
+        self.assertIn("第1章", p3.stdout.split("P1 细节召回")[1].split("预算表")[0],
+                      "召回块应指向命中章")
+        (self.proj / "outline/chapter-015.md").unlink()
+
     # ---------- t16: 规则分级校准(calibrate) + 小语料护栏 ----------
     def test_t16_calibrate(self):
         # calibrate 需要 ≥3 章正文;自造 4 章(其中让某个 watch 词广覆盖以走判定分支)

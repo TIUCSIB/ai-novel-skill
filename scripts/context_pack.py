@@ -19,6 +19,12 @@ from pathlib import Path
 from _common import (analysis_path, ch_path, ch_file, count_words,
                      force_utf8_stdio, load_json, plan_path, read_text)
 
+try:  # 全文检索(BM25 细节召回);导入失败则本段静默跳过,不影响其余板块
+    from search_corpus import bm25, load_chunks, snippet as _snip
+    _HAS_SEARCH = True
+except ImportError:
+    _HAS_SEARCH = False
+
 # 各板块软上限(字,非空白字符):超限即折叠并留"反查提示"
 SECTION_CAPS = {
     "P0 故事骨架": 1600,
@@ -435,6 +441,31 @@ def main() -> int:
             lines.append(f"- ⚠ 本章计划直接涉及 {len(hit_terms)} 个未揭示术语,写到它们时只许用『读者应知』层表述;"
                          "提前泄 truth 按 D5 红线处理")
         add("P1 术语卡", "\n" + "\n".join(lines), caps.get("P1 术语卡"))
+
+    # --- 细节召回(BM25):用本章计划查已写正文,把字面相关的旧场景端到眼前 ---
+    # RAG 的"检索→增强"环,零依赖实现;与台账分工:账本管事实,这里管原文画面。
+    if _HAS_SEARCH and n > 4:  # 前几章没多少存量,不查
+        try:
+            chunks = load_chunks(project)
+            # 先多取候选再过滤:否则"最近章/本章正文"霸榜会把召回全挤没
+            hits = bm25(plan_text, chunks, top=20)
+            lines = ["## P1 细节召回(本章计划 vs 已写正文,BM25 字面检索)",
+                     "> 用途:写之前看看旧场景原文长什么样,防吃书、防无意识复用;检索到≠必须采用;"
+                     "要更多结果用 scripts/search_corpus.py 手工查。"]
+            kept = 0
+            for s, i in hits:
+                cn, ct = chunks[i]
+                # 排除本章(计划往往从本章正文沉淀,自我匹配无意义)与最近 2 章(结尾/摘要已另有专段)
+                if s < 4.0 or cn >= n - 1 or len(ct) < 40:
+                    continue
+                lines.append(f"- 第{cn}章(相关度 {s:.1f}):{_snip(ct, 110)}…")
+                kept += 1
+                if kept >= 5:
+                    break
+            if kept:
+                add("P1 细节召回", "\n" + "\n".join(lines))
+        except Exception as e:  # 检索永远不该拖垮上下文包
+            print(f"[Warn] 细节召回跳过:{e}", file=sys.stderr)
 
     # --- 收尾块:文风画像 + 上一章结尾原文(上下文顺序纪律:最后读到的必须是正文语态) ---
     used = sum(count_words(t) for _, t in blocks)  # 已入块累计,供收尾块预算判断
