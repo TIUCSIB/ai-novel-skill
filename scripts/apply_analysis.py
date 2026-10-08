@@ -307,8 +307,51 @@ def main() -> int:
                          "type": ev.get("type", "plot"), "event": ev.get("event", ""),
                          "note": ev.get("note", "")})
 
+    # ---- 应用:术语账(新名词首现管理) ----
+    # 术语=题材专名/组织职司/机制概念等"读者需要知道那是什么"的词。
+    # 首现章与真相登记一次即可;reveal_chapter/revealed 允许后续章修订(计划赶不上正文)。
+    tj = project / "ledger" / "terms.json"
+    terms = load_json(tj, default={"terms": []})["terms"]
+    terrors = []
+    tseen = {t.get("term") for t in terms}
+    new_terms = []
+    for t in a.get("terms") or []:
+        name = (t.get("term") or "").strip()
+        if not name:
+            terrors.append("terms 条目缺 term")
+            continue
+        if name in tseen:
+            continue  # 已入账,首现登记不覆盖
+        entry = {"id": next_id(terms + new_terms, "T"), "term": name,
+                 "first_chapter": n,
+                 "brief": t.get("brief", ""),               # 读者此刻需要知道的最小解释
+                 "truth": t.get("truth", ""),               # 完整真相(作者视角)
+                 "reveal_chapter": t.get("reveal_chapter"), # 计划揭示章(可空)
+                 "revealed": False}
+        new_terms.append(entry)
+        tseen.add(name)
+    # 术语已揭示的登记(analysis 里 revealed_terms: ["词"])
+    revealed = set(a.get("revealed_terms") or [])
+    for t in terms + new_terms:
+        if t.get("term") in revealed:
+            t["revealed"] = True
+            t["revealed_chapter"] = n
+
+    if terrors:
+        print("— 校验失败,未写入任何文件 —")
+        for e in terrors:
+            print(f"  ✗ {e}")
+        return 1
+
     # ---- 写入 ----
     save_json(cj, {"characters": chars})
+    if new_terms or revealed:
+        terms.extend(new_terms)
+        save_json(tj, {"terms": terms})
+        if new_terms:
+            applied.append(f"术语入账 {len(new_terms)} 条:" + "、".join(t["term"] for t in new_terms[:5]))
+        if revealed:
+            applied.append(f"术语标记已揭示 {len(revealed)} 条")
     # 事件溯源:每章落一份角色状态快照(章末状态),供 rebuild_state 重放/时点查询
     snap_dir = project / "ledger" / "snapshots"
     snap_dir.mkdir(parents=True, exist_ok=True)

@@ -61,6 +61,10 @@
     "mech": {
       "name": "机械标点错误",
       "guide": "半角标点夹汉字、重复标点不是风格问题,是打字残留,规则库唯一允许自动修复(auto-fix)的两类;修复后必须复跑 style_stats 确认无新警告。"
+    },
+    "reth": {
+      "name": "修辞反问腔",
+      "guide": "难道/岂/何曾…吗?的连环反问是 AI 替作者喊口号;观点靠事件立,不靠反问催。"
     }
   },
   "rules": [
@@ -1002,9 +1006,19 @@
       "cat": "end",
       "level": "core",
       "mode": "ban",
-      "kind": "word",
-      "pat": "命运的齿轮",
-      "hint": "删,用下一章开头接住"
+      "kind": "regex",
+      "pat": "命运的(?:齿轮|巨手|车轮)",
+      "hint": "删,用下一章开头接住",
+      "ex": {
+        "hit": [
+          "命运的齿轮开始转动",
+          "命运的巨手拨开了他"
+        ],
+        "miss": [
+          "车轮滚滚向前",
+          "他转动了风车"
+        ]
+      }
     },
     {
       "id": "end-gaibian",
@@ -1218,6 +1232,468 @@
           }
         ]
       }
+    },
+    {
+      "id": "face-lianzu",
+      "cat": "face",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "脸色(?:微|骤|大|一)?(?:变|沉|发白)",
+      "hint": "脸谱化情绪;写他随后做了什么不同的事",
+      "ex": {
+        "hit": [
+          "他脸色微变",
+          "那执事脸色一沉",
+          "她脸色发白"
+        ],
+        "miss": [
+          "神色平静如水",
+          "她面色如常"
+        ]
+      }
+    },
+    {
+      "id": "face-rongning",
+      "cat": "face",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "笑容凝固",
+      "hint": "写笑声在哪一个字上断了,不写'凝固'"
+    },
+    {
+      "id": "face-chouchu",
+      "cat": "face",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "嘴角抽搐",
+      "hint": "漫画式反应,密度观察"
+    },
+    {
+      "id": "body-daonaobk",
+      "cat": "body",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "大脑一片空白",
+      "hint": "写动作停滞的具体处:手停在半空,忘了自己要干什么"
+    },
+    {
+      "id": "body-lengzhulei",
+      "cat": "body",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "整个人都愣",
+      "hint": "全身呆住模板,写局部即可"
+    },
+    {
+      "id": "mood-sijimo",
+      "cat": "mood",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "死一般的寂静",
+      "hint": "写寂静中第一个响的声音"
+    },
+    {
+      "id": "mood-bingku",
+      "cat": "mood",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "如坠冰窟",
+      "hint": "冷意写体感细节,密度观察"
+    },
+    {
+      "id": "mood-weihu",
+      "cat": "mood",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "regex",
+      "pat": "安静得[^。]{0,8}(?:可怕|诡异|过分)",
+      "hint": "'安静得可怕'是说明书;写安静里的具体动静",
+      "ex": {
+        "hit": [
+          "堂中安静得可怕"
+        ],
+        "miss": [
+          "他安静地坐着",
+          "房间过分整洁"
+        ]
+      }
+    },
+    {
+      "id": "mood-hushi",
+      "cat": "mood",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "似乎",
+      "hint": "不确定语气滥用,密度交闸门"
+    },
+    {
+      "id": "psych-xianqi",
+      "cat": "psych",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "心中(?:掀起|涌起)(?:惊涛|波澜|巨浪)",
+      "hint": "演出来的震撼不再旁白一遍",
+      "ex": {
+        "hit": [
+          "心中掀起惊涛骇浪",
+          "心中涌起波澜"
+        ],
+        "miss": [
+          "胸中块垒难消"
+        ]
+      }
+    },
+    {
+      "id": "psych-pengpai",
+      "cat": "psych",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "心潮澎湃",
+      "hint": "宏大情绪套话,密度观察"
+    },
+    {
+      "id": "talk-huiyiluo",
+      "cat": "talk",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "话音未落",
+      "hint": "谁打断、怎么打断,写打断本身"
+    },
+    {
+      "id": "talk-yiziyi",
+      "cat": "talk",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "一字一顿",
+      "hint": "强调节拍模板,密度观察"
+    },
+    {
+      "id": "talk-yiwei",
+      "cat": "talk",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "(?:意味深长|语重心长)(?:地|的)(?:说|道|叮嘱|吩咐|嘱咐)",
+      "hint": "语气副词代替了台词本身;让措辞自己带分量",
+      "ex": {
+        "hit": [
+          "他意味深长地说",
+          "长老语重心长的叮嘱"
+        ],
+        "miss": [
+          "他话说得耐人寻味",
+          "话里带着意味深长"
+        ]
+      }
+    },
+    {
+      "id": "conn-jiuzai",
+      "cat": "conn",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "就在这时",
+      "hint": "万能转折胶水,直接切事件"
+    },
+    {
+      "id": "conn-jiejian",
+      "cat": "conn",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "紧接着",
+      "hint": "顺序感靠动作衔接,不靠报幕"
+    },
+    {
+      "id": "conn-xiaoyimiao",
+      "cat": "conn",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "下一秒",
+      "hint": "时间跳跃词,密度观察"
+    },
+    {
+      "id": "conn-liangjiu",
+      "cat": "conn",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "良久",
+      "hint": "沉默写时长不如写谁先动"
+    },
+    {
+      "id": "conn-pianke",
+      "cat": "conn",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "片刻",
+      "hint": "同上,高频计时词"
+    },
+    {
+      "id": "pacer-xuanji",
+      "cat": "pacer",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "旋即",
+      "hint": "加速器同族,密度闸门"
+    },
+    {
+      "id": "pacer-huanhuan",
+      "cat": "pacer",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "缓缓",
+      "hint": "'缓缓+动作'是节奏拖词,写动作本身的次序"
+    },
+    {
+      "id": "pacer-turan",
+      "cat": "pacer",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "突然",
+      "hint": "突转靠布置,不靠'突然'预告"
+    },
+    {
+      "id": "pacer-juran",
+      "cat": "pacer",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "居然",
+      "hint": "惊讶转嫁词,密度观察"
+    },
+    {
+      "id": "pacer-jingran2",
+      "cat": "pacer",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "竟然",
+      "hint": "同上"
+    },
+    {
+      "id": "infl-chizhong",
+      "cat": "infl",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "岂是池中物",
+      "hint": "金句型通胀,密度观察"
+    },
+    {
+      "id": "infl-pangbo",
+      "cat": "infl",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "气势磅礴",
+      "hint": "四字总评,写可测的侧面"
+    },
+    {
+      "id": "fill-yaozhidao",
+      "cat": "filler",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "要知道",
+      "hint": "说教前摇;信息放进事件里给"
+    },
+    {
+      "id": "fill-budebu",
+      "cat": "filler",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "不得不说",
+      "hint": "删掉后句意不变,直接删"
+    },
+    {
+      "id": "fill-zhudeyi",
+      "cat": "filler",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "值得一提的是",
+      "hint": "值得提的就直接提"
+    },
+    {
+      "id": "fill-wuduoyu",
+      "cat": "filler",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "无独有偶",
+      "hint": "巧合的自报家门;巧合有限额(craft 因果纪律)"
+    },
+    {
+      "id": "syn-gengshi",
+      "cat": "syntax",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "是[^，。]{2,12},是[^，。]{2,12},(?:更|也)是",
+      "hint": "三连定义句砍到一层",
+      "ex": {
+        "hit": [
+          "这是勇气,是责任,更是宿命"
+        ],
+        "miss": [
+          "他是师父,她是弟子"
+        ]
+      }
+    },
+    {
+      "id": "syn-daizhe",
+      "cat": "syntax",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "regex",
+      "pat": "带着[^，。]{2,10}的(?:语气|口吻|笑意|戏谑)",
+      "hint": "'带着X味的Y'是对话化妆术;让台词自己带味",
+      "ex": {
+        "hit": [
+          "他带着几分戏谑的语气开口"
+        ],
+        "miss": [
+          "他带着干粮上了路",
+          "带着妹妹来看灯"
+        ]
+      }
+    },
+    {
+      "id": "trans-qingkuang",
+      "cat": "trans",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "regex",
+      "pat": "在[^。]{1,15}的情况下",
+      "hint": "条件状语从句腔,拆成两句",
+      "ex": {
+        "hit": [
+          "在他不在场的情况下她开了口",
+          "在这种微妙的情况下只能作罢"
+        ],
+        "miss": [
+          "在这样的夜里他睡不着",
+          "情况就是这样"
+        ]
+      }
+    },
+    {
+      "id": "trans-fangshi2",
+      "cat": "trans",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "regex",
+      "pat": "以[^。]{1,12}的方式",
+      "hint": "'以…的方式'是名词化英文腔,直接用动词",
+      "ex": {
+        "hit": [
+          "以一种全新的方式修行"
+        ],
+        "miss": [
+          "他以极快的速度冲了出去"
+        ]
+      }
+    },
+    {
+      "id": "pov-zhishita",
+      "cat": "pov",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "只(?:是|有)?(?:他|她|二人|两人)不知道",
+      "hint": "叙述越权烧悬念;信息差交给读者的眼睛",
+      "ex": {
+        "hit": [
+          "只是他不知道,那封信当晚就被烧了",
+          "只有她不知道此事"
+        ],
+        "miss": [
+          "他什么都不知道",
+          "这事没人知道"
+        ]
+      }
+    },
+    {
+      "id": "pov-zhuanyi",
+      "cat": "pov",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "画面一转",
+      "hint": "分镜腔;空行+地点锚直接切"
+    },
+    {
+      "id": "pov-danjian",
+      "cat": "pov",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "但见",
+      "hint": "说书残留,密度观察"
+    },
+    {
+      "id": "end-lingwaige",
+      "cat": "end",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "regex",
+      "pat": "那就是另一个(?:故事|传说)",
+      "hint": "卖关子套话;真悬念用事件留",
+      "ex": {
+        "hit": [
+          "那就是另一个故事了"
+        ],
+        "miss": [
+          "另一个故事发生在南边"
+        ]
+      }
+    },
+    {
+      "id": "reth-fanwen",
+      "cat": "reth",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "regex",
+      "pat": "(?:难道|岂是|何曾|又怎能)[^。！？]{2,25}吗[？?]",
+      "hint": "反问连发=作者急了;一章至多一次",
+      "ex": {
+        "hit": [
+          "难道他会怕了吗？",
+          "岂是容易的事吗？"
+        ],
+        "miss": [
+          "他忘了吗？",
+          "这事怎么办？"
+        ]
+      }
+    },
+    {
+      "id": "reth-heqi",
+      "cat": "reth",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "何其相似",
+      "hint": "史论腔点评,删"
     }
   ]
 }

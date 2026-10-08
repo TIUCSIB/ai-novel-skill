@@ -164,6 +164,36 @@ def main() -> int:
     if orgs:
         oks.append(f"组织 {len(orgs)} 个成员引用校验完成")
 
+    # --- 术语账(新名词首现管理;旧项目无此文件则跳过) ---
+    tj = project / "ledger" / "terms.json"
+    if tj.exists():
+        try:
+            terms = load_json(tj).get("terms", [])
+        except json.JSONDecodeError as e:
+            E(f"terms.json 解析失败:{e}")
+            terms = []
+        t_seen: set[str] = set()
+        for t in terms:
+            name = t.get("term", "")
+            if not name:
+                E("术语条目缺 term")
+                continue
+            if name in t_seen:
+                E(f"术语重复入账:{name}")
+            t_seen.add(name)
+            fc, rc = t.get("first_chapter"), t.get("reveal_chapter")
+            if t.get("revealed") and rc is None:
+                rc = t.get("revealed_chapter")
+            if rc is not None and fc is not None and rc < fc:
+                E(f"术语「{name}」揭示章 {rc} 早于首现章 {fc}")
+        if terms:
+            pending = [t for t in terms if not t.get("revealed")
+                       and t.get("reveal_chapter") is not None
+                       and t["reveal_chapter"] <= current]
+            for t in pending[:8]:
+                W(f"术语「{t['term']}」计划第 {t['reveal_chapter']} 章揭示,已到 {current} 章未标 revealed")
+            oks.append(f"术语 {len(terms)} 条引用校验完成")
+
     # --- 分析文件内容 ---
     analysis_dir = project / "analysis"
     if analysis_dir.exists():

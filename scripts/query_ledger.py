@@ -22,6 +22,7 @@ def load_all(project: Path) -> dict:
         "chars": load_json(project / "ledger" / "characters.json", default={"characters": []})["characters"],
         "fofs": load_json(project / "ledger" / "foreshadowing.json", default={"foreshadows": []})["foreshadows"],
         "orgs": load_json(project / "ledger" / "organizations.json", default={"organizations": []})["organizations"],
+        "terms": load_json(project / "ledger" / "terms.json", default={"terms": []})["terms"],
         "timeline": [],
     }
     adir = project / "analysis"
@@ -78,18 +79,20 @@ def main() -> int:
     ap.add_argument("-i", "--item", help="按道具/物资反查持有者与涉及章节")
     ap.add_argument("-l", "--location", help="按地点反查发生章节(依赖 analysis.location 字段)")
     ap.add_argument("-k", "--keyword", help="全库关键词搜索(analysis+timeline+台账)")
+    ap.add_argument("--term", help="按术语反查:首现章/最小解释/真相/揭示计划(新名词首现管理)")
     ap.add_argument("--recent", type=int, help="最近 N 章速览")
     ap.add_argument("--at", type=int, help="时点查询(配合 -c):返回第 N 章结束时的角色状态(事件溯源)")
     ap.add_argument("--full", action="store_true", help="输出每章完整摘要与钩子")
     args = ap.parse_args()
 
-    if not any((args.character, args.thread, args.item, args.location, args.keyword, args.recent)):
+    if not any((args.character, args.thread, args.item, args.location, args.keyword, args.term, args.recent)):
         print("请指定查询维度,例如:\n"
               "  python query_ledger.py <项目> --recent 3      # 最近3章速览\n"
               "  python query_ledger.py <项目> -c 林昭         # 角色出场史+当前状态\n"
               "  python query_ledger.py <项目> -t 玉佩         # 伏笔台账与节拍\n"
               "  python query_ledger.py <项目> -i 残玉         # 道具流转\n"
               "  python query_ledger.py <项目> -l 青石镇       # 地点关联章节\n"
+              "  python query_ledger.py <项目> --term 回风倒走  # 术语:首现/解释/揭示计划\n"
               "  python query_ledger.py <项目> -k 血字         # 全库关键词")
         return 0
 
@@ -193,6 +196,19 @@ def main() -> int:
         if not located:
             head.append(f"[提示] 无 analysis.location 字段命中「{args.location}」,以上为摘要回退结果。"
                         "建议章分析补充 location 字段。")
+
+    # ---- --term 术语 ----
+    if args.term:
+        if not d["terms"]:
+            head.append("[提示] 本项目术语账为空(ledger/terms.json)。")
+        for t in d["terms"]:
+            blob = (t.get("term", "") + t.get("brief", "") + t.get("truth", ""))
+            if args.term in blob:
+                state = "已揭示于第{}章".format(t.get("revealed_chapter")) if t.get("revealed") \
+                    else (f"计划第{t['reveal_chapter']}章揭示" if t.get("reveal_chapter") else "未排揭示")
+                head.append(f"【术语】{t['id']} {t['term']} | 首现第{t.get('first_chapter', '?')}章 | {state}")
+                head.append(f"  读者应知:{t.get('brief', '')}")
+                head.append(f"  完整真相:{t.get('truth', '')}")
 
     # ---- -k 关键词 ----
     if args.keyword:

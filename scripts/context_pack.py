@@ -420,11 +420,53 @@ def main() -> int:
                 + "\n".join(f"- 第{e['chapter']}章 {id2name.get(e.get('entity'), e.get('entity'))}:{e.get('event', '')}"
                             for e in events[-10:]))
 
+    # --- 术语卡(新名词首现管理):本章计划涉及的未揭示术语 → 允许信息上限 ----
+    terms_all = load_json(project / "ledger" / "terms.json", default={"terms": []})["terms"]
+    unrev = [t for t in terms_all if not t.get("revealed")]
+    hit_terms = [t for t in unrev
+                 if t.get("term", "@@") in plan_text or t.get("term", "")[:2] in plan_text]
+    if terms_all:
+        lines = ["## P1 术语卡(读者视角:表述不得超出 brief;truth 只在揭示章给)"]
+        for t in (hit_terms or unrev)[:8]:
+            state = ("计划第{}章揭示".format(t["reveal_chapter"])
+                     if t.get("reveal_chapter") else "未排揭示") if not t.get("revealed") else "已揭示"
+            lines.append(f"- 【{t['term']}】首现第{t.get('first_chapter', '?')}章|{state} — 读者应知:{t.get('brief', '')}")
+        if hit_terms:
+            lines.append(f"- ⚠ 本章计划直接涉及 {len(hit_terms)} 个未揭示术语,写到它们时只许用『读者应知』层表述;"
+                         "提前泄 truth 按 D5 红线处理")
+        add("P1 术语卡", "\n" + "\n".join(lines), caps.get("P1 术语卡"))
+
+    # --- 收尾块:文风画像 + 上一章结尾原文(上下文顺序纪律:最后读到的必须是正文语态) ---
+    used = sum(count_words(t) for _, t in blocks)  # 已入块累计,供收尾块预算判断
+    tail_blocks: list[tuple[str, str]] = []
+    prof = project / "style" / "profile.md"
+    if prof.exists():
+        tail_blocks.append(("P2 文风画像", "\n## P2 文风画像(动笔前最后读:保持正文语态入笔)\n```markdown\n"
+                            + read_text(prof).strip() + "\n```"))
+    if n > 1 and prev.exists():
+        lines = read_text(prev).splitlines()
+        body_lines = lines[1:] if lines and lines[0].lstrip().startswith("#") else lines
+        excerpt = "\n".join(body_lines)[-tail:].strip()
+        tail_blocks.append(("P2 上一章结尾原文",
+                            f"\n## P2 上一章结尾原文(最后 {tail} 字 —— 从这里接笔)\n```text\n…{excerpt}\n```"))
+    if tail_blocks:
+        tail_text = "\n".join(t for _, t in tail_blocks)
+        tail_used = count_words(tail_text)
+        if used + tail_used > budget:
+            for label, t in tail_blocks:  # 超预算时先裁结尾块,再裁画像
+                if used + count_words(t) <= budget:
+                    blocks.append((label, t))
+                    used += count_words(t)
+                else:
+                    folded.append(f"{label}(超预算被裁)")
+        else:
+            for label, t in tail_blocks:
+                blocks.append((label, t))
+                used += count_words(t)
+
     # --- 输出正文 + 预算表 ---
-    used = 0
     for label, text in blocks:
         out.append(text)
-        used += count_words(text)
     print("\n".join(out))
     print("\n## 预算表")
     for label, text in blocks:

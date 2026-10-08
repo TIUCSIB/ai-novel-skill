@@ -465,6 +465,76 @@ class Regression(unittest.TestCase):
         cj.write_text(json.dumps({"characters": [c for c in d["characters"] if c["id"] != "C-090"]},
                                  ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
+    # ---------- t21: 术语账(新名词首现管理:入账/反查/揭示/查重) ----------
+    def test_t21_terms_ledger(self):
+        self._write("chapters/021.md", "# 第21章 源解\n\n" + "他翻开《源解》残页。" * 300 + "\n")
+        self._write("outline/chapter-021.md", "# 第21章 源解\n出场角色: 主角\n")
+        a = json.loads(json.dumps(CH1_ANALYSIS))
+        a["chapter"] = 21
+        a["foreshadow_ops"] = []
+        a["organizations"] = []
+        a["world_facts"] = []
+        a["relationships"] = []
+        a["terms"] = [{"term": "源解", "brief": "主角手中的残卷,能拆解万物之理",
+                       "truth": "上个文明留下的知识引擎,全书终极真相", "reveal_chapter": 60}]
+        self._write("analysis/021.json", json.dumps(a, ensure_ascii=False))
+        p = run("apply_analysis.py", self.proj, 21)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        terms = json.loads(self._read("ledger/terms.json"))["terms"]
+        self.assertEqual(len(terms), 1)
+        self.assertEqual(terms[0]["first_chapter"], 21)
+        self.assertFalse(terms[0]["revealed"])
+        # 反查
+        p2 = run("query_ledger.py", self.proj, "--term", "源解")
+        self.assertIn("首现第21章", p2.stdout)
+        self.assertIn("计划第60章揭示", p2.stdout)
+        # 重复回写不双记
+        p3 = run("apply_analysis.py", self.proj, 21, "--replace")
+        self.assertEqual(p3.returncode, 0, p3.stdout + p3.stderr)
+        self.assertEqual(len(json.loads(self._read("ledger/terms.json"))["terms"]), 1)
+        # 揭示:22 章 analysis 带 revealed_terms
+        self._write("chapters/022.md", "# 第22章 揭\n\n" + "真相揭开。" * 300 + "\n")
+        self._write("outline/chapter-022.md", "# 第22章 揭\n出场角色: 主角\n")
+        b = json.loads(json.dumps(CH1_ANALYSIS))
+        b["chapter"] = 22
+        b["foreshadow_ops"] = []
+        b["organizations"] = []
+        b["world_facts"] = []
+        b["relationships"] = []
+        b["revealed_terms"] = ["源解"]
+        self._write("analysis/022.json", json.dumps(b, ensure_ascii=False))
+        p4 = run("apply_analysis.py", self.proj, 22)
+        self.assertEqual(p4.returncode, 0, p4.stdout + p4.stderr)
+        t0 = json.loads(self._read("ledger/terms.json"))["terms"][0]
+        self.assertTrue(t0["revealed"] and t0["revealed_chapter"] == 22)
+        p5 = run("check_ledger.py", self.proj)
+        self.assertIn("术语 1 条", p5.stdout)
+        for rel in ("chapters/021.md", "chapters/022.md", "analysis/021.json", "analysis/022.json",
+                    "outline/chapter-021.md", "outline/chapter-022.md", "ledger/terms.json",
+                    "ledger/snapshots/021.json", "ledger/snapshots/022.json"):
+            (self.proj / rel).unlink(missing_ok=True)
+        self._write("ledger/terms.json", json.dumps({"terms": []}, ensure_ascii=False, indent=2))
+
+    # ---------- t22: 上下文顺序纪律 + 术语卡进 pack ----------
+    def test_t22_pack_order_discipline(self):
+        self._write("style/profile.md", "# 文风画像:测试\n短句为主,冷收尾。\n", )
+        self._write("outline/chapter-002.md", "# 第2章 计划\n出场角色: 主角\n")
+        terms = [{"id": "T-001", "term": "源解", "first_chapter": 1, "brief": "残卷",
+                  "truth": "知识引擎", "reveal_chapter": 60, "revealed": False}]
+        self._write("ledger/terms.json", json.dumps({"terms": terms}, ensure_ascii=False))
+        p = run("context_pack.py", self.proj, 2)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("P1 术语卡", p.stdout)
+        self.assertIn("读者应知", p.stdout)
+        self.assertIn("P2 文风画像", p.stdout)
+        self.assertIn("从这里接笔", p.stdout, "结尾必须给上一章原文(正文语态垫底)")
+        pack = p.stdout.replace(" ", "").replace("\n", "")
+        self.assertGreater(pack.find("从这里接笔"), pack.find("P2伏笔提醒"), "结尾原文必须排在信息类之后")
+        self.assertLess(pack.find("从这里接笔"), pack.find("预算表"), "预算表外,正文块最末是结尾原文")
+        (self.proj / "outline/chapter-002.md").unlink()
+        (self.proj / "style/profile.md").unlink()
+        self._write("ledger/terms.json", json.dumps({"terms": []}, ensure_ascii=False))
+
     # ---------- t16: 规则分级校准(calibrate) + 小语料护栏 ----------
     def test_t16_calibrate(self):
         # calibrate 需要 ≥3 章正文;自造 4 章(其中让某个 watch 词广覆盖以走判定分支)

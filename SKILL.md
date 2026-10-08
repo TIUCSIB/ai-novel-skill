@@ -32,6 +32,7 @@ description: AI 长篇小说创作工作流:以文件台账(角色/伏笔/时间
 │   ├── organizations.json # 组织/势力账本:宗门/公司/家族的掌控者、成员、局势
 │   ├── foreshadowing.json # 伏笔账本:状态机 planned→planted→advanced→resolved/abandoned
 │   ├── world_rules.json # 世界硬规则台账(写作中确立的新规则)
+│   ├── terms.json       # 术语账(新名词首现管理:brief=读者应知,truth=完整真相,揭示章字段)
 │   ├── snapshots/       # 逐章状态快照(apply_analysis 自动落,事件溯源用)
 │   ├── decisions.jsonl  # 非标准决策审计(干预分诊/弧末结论/重写原因)
 │   └── timeline.jsonl   # 逐章事件日志(append-only)
@@ -64,7 +65,7 @@ description: AI 长篇小说创作工作流:以文件台账(角色/伏笔/时间
 3. 填写 `premise.md`(logline / 核心冲突 / 主角 / 卖点 / 基调),**给用户确认**。
 4. 构建 `bible/`:world.md、rules.md、characters.md。rules.md 必须包含力量体系边界与"禁写事项"。**主角团先过角色工作坊**(`references/character-workshop.md`,次要角色 20 问档,主角 80 问档)再落笔。
 5. **有力量/概念体系的题材**(修仙/科幻/魔法/异能等)再加两件套:init 已生成模板 —— `bible/power_matrix.md`(境界/等级阶梯、越级挑战的代价规则、主角当前上限)与 `bible/lexicon.md`(题材概念 → 底层逻辑映射词典,如"灵气→可编程能量场")。这两份是防战力崩坏与保证题材质感一致性的锚。
-6. 更新 `style/voice.md`:根据题材和用户偏好定视角、句风、节奏。**禁用清单不要手抄,从规则库导入**:`python <技能目录>/scripts/rules_guide.py init-voice "<项目目录>"`(默认 standard 档 ban 规则,带 `[id]` 标记,重跑不覆盖手工条目;全书 96 条分级规则见 `references/rules.json`,`validate` 可校验)。**若用户提供了文风样例文本**,先生成仿写画像(`references/style-profile.md` → `style/profile.md`),voice.md 引用它。
+6. 更新 `style/voice.md`:根据题材和用户偏好定视角、句风、节奏。**禁用清单不要手抄,从规则库导入**:`python <技能目录>/scripts/rules_guide.py init-voice "<项目目录>"`(默认 standard 档 ban 规则,带 `[id]` 标记,重跑不覆盖手工条目;全书 138 条分级规则见 `references/rules.json`,`validate` 可校验)。**若用户提供了文风样例文本**,先生成仿写画像(`references/style-profile.md` → `style/profile.md`),voice.md 引用它。
 
 ## 阶段 1:大纲
 
@@ -73,7 +74,7 @@ description: AI 长篇小说创作工作流:以文件台账(角色/伏笔/时间
 1. **先立北极星**:与用户共同确认 `outline/compass.md` —— 立意内核(这本书到底在说什么)、终极真相与终局愿景、主题红线、活跃长线。**写长了防主题漂移就靠它:前三节此后不动,只在每卷收官更新"活跃长线"。**
 2. `outline/master.md`:三幕或分卷结构,每卷写目标、主要转折、起止章范围。**用户批准后进入下一步**。
 3. `outline/arc-1.md`:只细化当前第一弧 —— 本弧目标、起止章、每章一句话概览、本弧要埋/收的伏笔。**选弧模板**:先读 `references/arc-library.md`(13 大节奏弧军火库),为本弧选 1 个主模板(相邻弧不重样,每卷穿插一条日常过渡弧),节拍拆解从模板骨架填充。
-4. 首章计划 `outline/chapter-001.md`(格式见 `references/ledger-schema.md` 的章计划模板,**必含信息控制四字段与人味配额四项**),把计划的伏笔以 `planned` 状态先登记进 `ledger/foreshadowing.json`(`planned_chapter` 填计划章号)。
+4. 首章计划 `outline/chapter-001.md`(格式见 `references/ledger-schema.md` 的章计划模板,**必含信息控制四字段与人味配额四项;钩子行标"型+强度"、开场标引子式**,式目见 `references/hooks.md`),把计划的伏笔以 `planned` 状态先登记进 `ledger/foreshadowing.json`(`planned_chapter` 填计划章号)。
 
 写到弧边界时(进入新弧前)再补下一份 arc-N.md,新卷涉及的重大设定变化先更新 bible 再写细纲。
 
@@ -85,7 +86,7 @@ description: AI 长篇小说创作工作流:以文件台账(角色/伏笔/时间
 ```
 python <技能目录>/scripts/context_pack.py "<项目目录>" N
 ```
-输出 P0/P1/P2 分层的上下文包:本章计划、上一章结尾、近三章摘要、故事骨架、**相关旧章四维推荐(伏笔埋设章/久未出场角色/道具锚章/静默因果线,≤6 条带理由)**、出场角色卡、伏笔四段提醒、世界规则、进度统计,末尾带**预算表**(长书自动折叠,折叠处留反查提示)。**先读这个再动笔,不要自己翻文件拼上下文。**
+输出 P0/P1/P2 分层的上下文包:本章计划、上一章结尾、近三章摘要、故事骨架、**相关旧章四维推荐(伏笔埋设章/久未出场角色/道具锚章/静默因果线,≤6 条带理由)**、出场角色卡、伏笔四段提醒、世界规则、**术语卡(未揭示术语的 brief 作为本章允许信息上限)**、进度统计,末尾带**预算表**(长书自动折叠,折叠处留反查提示);**最后两块固定是文风画像 + 上一章结尾原文(动笔前最后读到的必须是正文语态,不让表格垫底)**。**先读这个再动笔,不要自己翻文件拼上下文。**
 若脚本报"本章无计划文件":先从 arc 细纲 + 上一章 `analysis` 的 `issues_next` 写 `outline/chapter-NNN.md`,登记 planned 伏笔,重新运行脚本。
 
 **② 写正文**
@@ -154,6 +155,7 @@ python <技能目录>/scripts/apply_analysis.py "<项目目录>" N
 - 角色出场后 `last_chapter` 必须更新;新配角首次出场由该章 analysis 的 `characters` 字段入账(新角色给 `role: minor`,只记名字+一句话身份,细节留给 bible)。
 - 宗门/公司/家族等**集体角色入组织账**:新组织由 analysis 的 `organizations` 字段入账,局势(`status`)随章更新;写政治线前先查 `organizations.json`。
 - 世界观在写作中被确立的新事实(如"玉佩遇血则热"),必须进 `analysis.world_facts`,由脚本落入 `world_rules.json`,后续章节查账遵守。
+- 本章**首次出现**的题材术语(读者需要知道"那是什么"的专名/机制),进 `analysis.terms`(brief=读者此刻应知,truth=完整真相留到揭示章);揭示章用 `analysis.revealed_terms` 标记。由脚本落 `terms.json`,`context_pack` 会把未揭示术语连 brief 作为「术语卡」摆眼前 —— 写它们时表述不得超出 brief。
 - 伏笔只能通过章计划登记(`planned`)和章分析推进(`plant/advance/setback/payoff/abandon`),不要绕过状态机直接改 status。
 
 ## 脚本参考
@@ -165,11 +167,11 @@ python <技能目录>/scripts/apply_analysis.py "<项目目录>" N
 | `scripts/log_decision.py <项目> --type ... --decision ...` | 干预分诊、弧末审计结论、重写原因等非标准决策落盘 |
 | `scripts/context_pack.py <项目> N [--budget 8000]` | 每章动笔前,组装第 N 章上下文包(带预算表;长书自动折叠;**含 P1 相关旧章四维推荐**:伏笔埋设章/久未出场角色/道具锚章/静默因果线) |
 | `scripts/rules_guide.py validate/print/scan/init-voice/calibrate/fix` | 分级规则库:校验(含正反例实跑) / 写作约束手册(动笔前) / 带行号扫描(自检) / 重建禁用清单 / 用本书数据校准分级 / **机械标点安全自动修复**(默认 dry-run,`--write` 落盘) |
-| `scripts/query_ledger.py <项目> -c/-t/-i/-l/-k` | 涉及旧角色/旧伏笔/旧道具/旧地点时,五维反查历史(加 `--at N` 查时点状态) |
+| `scripts/query_ledger.py <项目> -c/-t/-i/-l/-k/--term` | 涉及旧角色/旧伏笔/旧道具/旧地点/旧术语时反查历史(加 `--at N` 查时点状态) |
 | `scripts/check_ledger.py <项目>` | 每章写完自检(自动含未回写章);弧末/完本清账;用户说"检查一致性"时 |
 | `scripts/style_stats.py <项目>` | 每章写完与弧末:AI 味密度/句式/句长节奏/标点/感官/章法同构/复读/口头禅/绕行/人味代标(用法见 references/ai-taste.md) |
 | `scripts/taste_audit.py <项目> [--out F]` | **全书清底**:黑名单全量清单、句式通胀、角色声音指纹、人味代理指标。接手旧稿、弧末审计、定期清底时跑 |
-| `scripts/apply_analysis.py <项目> N [--replace]` | 每章分析写完后回写台账;重写章时加 --replace |
+| `scripts/apply_analysis.py <项目> N [--replace]` | 每章分析写完后回写台账(含术语账 terms);重写章时加 --replace |
 | `scripts/validate_edit.py <项目> N` | **润色/重写护栏**:改完正文、回写之前跑;字数骤降/对白腰斩/段落缩水即 FAIL(防"改稿=删稿") |
 | `scripts/rebuild_state.py <项目>` | 角色状态重放校准 + `--at N` 时点重建(事件溯源);弧末校准用 |
 | `scripts/snapshot.py <项目>` | 生成人类可读的全书快照(角色状态/伏笔/进度),每弧收官或用户要求时 |
@@ -187,7 +189,8 @@ python <技能目录>/scripts/apply_analysis.py "<项目目录>" N
 - `references/review-rubric.md` — 七维审校细则 + 反通胀校准 + subagent 盲审派发模板。**每章审校时对照。**
 - `references/style-guide.md` — 机械禁则:黑名单、复读分级、字数纪律、开头结尾规则。**自检时对照。**
 - `references/ai-taste.md` — AI 味对比例句库(含**万能转折:副词加速器**专节)+ 密度警戒线 + 黑名单绕行边界 + 修订工序 + 人味配额。**动笔前找感觉、自检改写、盲审 D7 时对照。**
-- `references/rules.md` + `references/rules.json` — 分级规则库(96 条 × 14 类目 × 三档 × ban/watch)。**立项导入禁用清单、导出手册、校准分级时读。**
+- `references/rules.md` + `references/rules.json` — 分级规则库(138 条 × 16 类目 × 三档 × ban/watch,regex 带正反例)。**立项导入禁用清单、导出手册、校准分级时读。**
+- `references/hooks.md` — 章首引子七式 + 章末钩子十三式 + 悬念强度五级与波浪配比 + 三段生成法。**写章计划(标钩子型/强度)与弧末分布核验时读。**
 - `references/craft.md` — 创作方法论:章节结构、爽点节奏、钩子库、MRU、对话区分度、伏笔节奏、因果纪律。**计划和动笔时读。**
 - `references/character-workshop.md` — 角色工作坊问题阶梯(配角 20 问 / 主要角色 80 问)。**立项建主角团、major 配角登场前用。**
 - `references/research-material.md` — 题材调研、素材库、拆书三项输入工作流。**开题前与每弧规划前用。**

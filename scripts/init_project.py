@@ -312,6 +312,7 @@ def main() -> int:
     save_json(root / "ledger" / "organizations.json", {"organizations": []})
     save_json(root / "ledger" / "foreshadowing.json", {"foreshadows": []})
     save_json(root / "ledger" / "world_rules.json", {"rules": []})
+    save_json(root / "ledger" / "terms.json", {"terms": []})
     tl = root / "ledger" / "timeline.jsonl"
     if not tl.exists():
         tl.write_text("", encoding="utf-8")
