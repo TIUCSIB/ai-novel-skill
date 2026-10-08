@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 编辑器/系统杂物
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 用本 skill 建的书稿项目不应提交进本仓库(它们是用户数据)
+/我的书/
+*.epub
