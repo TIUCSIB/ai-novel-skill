@@ -1,5 +1,16 @@
 # ai-novel 技能变更记录
 
+## v3.0(2026-10-08)—— 五项机制补强(来自五仓库对账 + chinese-novelist-skill 分析)
+
+用户点单"这五点除了成本预算都应该具备"+ 分析第六个参考项目(PenglongHuang/chinese-novelist-skill,同形态 Agent Skill)。落地四项(RAG 受纯标准库约束不做,由②覆盖):
+
+- **① 规则库正反例纪律 + 安全 autofix**:每条 regex 规则强制 `ex.hit`/`ex.miss` 样例,validate 实跑双向验证(hit 必须被自身命中、miss 必须不被)——机制当场抓到开发中 mech-repeat 的 `\1` 转义 bug(JSON 里变控制字符),自证有效。新增第 15 类目 `mech`(机械标点错误:半角夹汉字/重复标点)+ `rules_guide.py fix`:全库唯一允许自动改写正文的通道,默认 dry-run,`--write` 落盘,修复前后"正文指纹"(汉字/字母/数字序列)必须一致 —— 只动标点绝不动字,语义类规则永远不自动改。98 条(ban 53/watch 45)。
+- **② context_pack 相关旧章四维推荐**(借鉴 ainovel-cli buildRelatedChapters):伏笔锚(计划操作的伏笔→其 plant 章)/角色锚(计划出场但 ≥12 章未露面→其 last_chapter)/道具锚(计划提及的持有物→其最近 timeline 事件章)/因果锚(sets_up 开出 ≥12 章无人 depends_on 承接→出处章)。排除最近 8 章,总闸 ≤6 条,每条带理由,同章多锚点合并理由。超长书的"该重读哪几章"不再靠人想起来反查。
+- **③ 润色护栏 validate_edit.py**(借鉴 Ai-Novel post_edit_validation):重写/润色改完正文、回写之前先跑;与 git 上一版(或 book.json 记账)对比,字数骤降>40%、对白行消失>60%、段落数腰斩、空文件、标题丢失 → exit 1 拦下,防"改稿=删稿"。接入 SKILL 重写流程作第一道闸。
+- **④ 伏笔稳定指纹 fp**(借鉴 MuMuAINovel content_hash 思路,按我们的痛点改造):`fp = sha1(归一化标题)[:10]`,apply_analysis 建账自动落 fp、plant 无 id 时优先按 fp 回种 planned(标点/空白差异免疫,旧 planned 无 fp 现算匹配并回补),check_ledger 用 fp 抓"同一伏笔记两条账"(--replace 匹配失败的产物,即 v2.4 修过那类 bug 的保险网)。手登记可不填 fp。ledger-schema 已补字段文档。
+- **实测发现并修的测试隔离缺陷**:t19 暴露"跨测试台账污染"(t02 入账的 F-001 会让后续章按标题放宽匹配误回种)——修法是测试自清理 + 该行为本就是设计意图。
+- 顺带:本地 README 残留的 私有绝对路径清除(发布副本早已泛化,本地副本漏了);脚本数 13→14,tests 20 例(t17 fix/t18 validate_edit/t19 fp/t20 四维推荐)。
+
 ## v2.9(2026-10-08)—— SKILL.md 渐进式披露瘦身 + 行为回归验证
 
 **行为回归(用例 2 循环顺序 / 用例 6 干预分诊)首次在全新隔离会话跑通**:用两个 2 章演示项目,让独立 agent 按 SKILL.md 实走"写第 3 章"完整循环与"改角色为卧底"分诊。结论:循环六步全部按序执行(缺计划先补计划、字数两次被 85% 闸门拦下并按扩情节修复、口头禅镜像抓到跨章复用按三遍法改写、自审走降级条款仍列出 3 条带原文必须修改、回写全走脚本、git 入库);分诊正确判 D 类、全程只读、三选一各写代价并推荐、按铁律"不顺手优化"未越权改动。**未发现体系缺陷**,证明 v2.2–2.8 新增的三个必跑命令与配额/手册接线被 agent 正确执行。
@@ -12,7 +23,6 @@
 - 顺手修两处笔误:`outlines/compass.md` → `outline/compass.md`(SKILL + REGRESSION,实际目录一直是单数,v1.x 遗留);项目目录规范补全 `reviews/`、`ledger/snapshots/`、`ledger/decisions.jsonl` 三项(此前漏列)。
 
 回归 16 例仍全绿;交叉引用完整性校验通过(SKILL 引用的 references 全部存在)。
-
 
 ## v2.8(2026-10-08)—— 校准闭环:calibrate 转档建议 + 人味代标 + 去重复
 
@@ -110,7 +120,7 @@
 
 ## v2.0(2026-10-07)—— 合并 novel-engine 精华
 
-从作者本地旧体系(novel-engine)与 5 个开源项目对比分析中吸收:
+从作者本地旧体系(novel-engine) 与 5 个开源项目对比分析中吸收:
 
 - references/arc-library.md:13 大节奏弧模板(来自 novel-engine 实战模板库);
 - references/review-rubric.md:七维审校 + 反通胀校准(机械扣分前置/强制发现≥2条/98+每10章至多1章/红线即REWRITE)+ 独立盲审 subagent 派发模板;

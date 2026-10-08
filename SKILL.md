@@ -85,7 +85,7 @@ description: AI 长篇小说创作工作流:以文件台账(角色/伏笔/时间
 ```
 python <技能目录>/scripts/context_pack.py "<项目目录>" N
 ```
-输出 P0/P1/P2 分层的上下文包:本章计划、上一章结尾、近三章摘要、故事骨架、出场角色卡、伏笔四段提醒、世界规则、进度统计,末尾带**预算表**(长书自动折叠,折叠处留反查提示)。**先读这个再动笔,不要自己翻文件拼上下文。**
+输出 P0/P1/P2 分层的上下文包:本章计划、上一章结尾、近三章摘要、故事骨架、**相关旧章四维推荐(伏笔埋设章/久未出场角色/道具锚章/静默因果线,≤6 条带理由)**、出场角色卡、伏笔四段提醒、世界规则、进度统计,末尾带**预算表**(长书自动折叠,折叠处留反查提示)。**先读这个再动笔,不要自己翻文件拼上下文。**
 若脚本报"本章无计划文件":先从 arc 细纲 + 上一章 `analysis` 的 `issues_next` 写 `outline/chapter-NNN.md`,登记 planned 伏笔,重新运行脚本。
 
 **② 写正文**
@@ -128,7 +128,7 @@ python <技能目录>/scripts/apply_analysis.py "<项目目录>" N
 5. 弧边界检测:若本章为当前弧收官章,先生成弧摘要(归入 arc-N.md 末尾),执行**弧末冷却审计**(`references/arc-audit.md`,含八类矛盾/状态校准/清底/试读/规则校准全套);若同时是卷收官,再更新 compass 活跃长线;完成后按弧军火库规划下一弧;
 6. **版本保护:`git add -A && git commit`(立项时已自动建仓,一章一提交,防丢稿)。**
 
-**重写第 N 章时**:重写正文 → 重新走 ④ 七维审校 → 重写 `analysis/NNN.json`,再用 `apply_analysis.py "<项目目录>" N --replace` 回写 —— 脚本会先撤销该章旧的事件与伏笔节拍再落新的,保证幂等。不要直接手改台账。
+**重写第 N 章时**:重写正文 → 先跑 `validate_edit.py "<项目目录>" N`(润色护栏:字数骤降 >40%、对白行腰斩、段落缩水即 FAIL —— 防"改稿=删稿")→ 重新走 ③ 自检与 ④ 七维审校 → 重写 `analysis/NNN.json`,再用 `apply_analysis.py "<项目目录>" N --replace` 回写 —— 脚本会先撤销该章旧的事件与伏笔节拍再落新的,保证幂等。不要直接手改台账。
 
 ## 中途干预分诊(Steering)
 
@@ -163,13 +163,14 @@ python <技能目录>/scripts/apply_analysis.py "<项目目录>" N
 | `scripts/init_project.py` | 立项时创建项目骨架(含自动 git init) |
 | `scripts/loop_status.py <项目> [N]` | 断点续写/批量开跑/迷路时:确定性流程导航 |
 | `scripts/log_decision.py <项目> --type ... --decision ...` | 干预分诊、弧末审计结论、重写原因等非标准决策落盘 |
-| `scripts/context_pack.py <项目> N [--budget 8000]` | 每章动笔前,组装第 N 章上下文包(带预算表;长书自动折叠) |
-| `scripts/rules_guide.py validate/print/scan/init-voice/calibrate` | 分级规则库:校验 / 写作约束手册(动笔前) / 带行号扫描(自检) / 重建禁用清单 / 用本书数据校准分级 |
+| `scripts/context_pack.py <项目> N [--budget 8000]` | 每章动笔前,组装第 N 章上下文包(带预算表;长书自动折叠;**含 P1 相关旧章四维推荐**:伏笔埋设章/久未出场角色/道具锚章/静默因果线) |
+| `scripts/rules_guide.py validate/print/scan/init-voice/calibrate/fix` | 分级规则库:校验(含正反例实跑) / 写作约束手册(动笔前) / 带行号扫描(自检) / 重建禁用清单 / 用本书数据校准分级 / **机械标点安全自动修复**(默认 dry-run,`--write` 落盘) |
 | `scripts/query_ledger.py <项目> -c/-t/-i/-l/-k` | 涉及旧角色/旧伏笔/旧道具/旧地点时,五维反查历史(加 `--at N` 查时点状态) |
 | `scripts/check_ledger.py <项目>` | 每章写完自检(自动含未回写章);弧末/完本清账;用户说"检查一致性"时 |
 | `scripts/style_stats.py <项目>` | 每章写完与弧末:AI 味密度/句式/句长节奏/标点/感官/章法同构/复读/口头禅/绕行/人味代标(用法见 references/ai-taste.md) |
 | `scripts/taste_audit.py <项目> [--out F]` | **全书清底**:黑名单全量清单、句式通胀、角色声音指纹、人味代理指标。接手旧稿、弧末审计、定期清底时跑 |
 | `scripts/apply_analysis.py <项目> N [--replace]` | 每章分析写完后回写台账;重写章时加 --replace |
+| `scripts/validate_edit.py <项目> N` | **润色/重写护栏**:改完正文、回写之前跑;字数骤降/对白腰斩/段落缩水即 FAIL(防"改稿=删稿") |
 | `scripts/rebuild_state.py <项目>` | 角色状态重放校准 + `--at N` 时点重建(事件溯源);弧末校准用 |
 | `scripts/snapshot.py <项目>` | 生成人类可读的全书快照(角色状态/伏笔/进度),每弧收官或用户要求时 |
 | `scripts/export.py <项目> --format txt\|md\|epub` | 完本或用户要求导出时(EPUB 可直接导入阅读器) |

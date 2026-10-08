@@ -129,6 +129,21 @@ def main() -> int:
             W(f"伏笔 {fid} 已 {current - lt} 章未推进,考虑安排回响或回收")
     oks.append(f"伏笔 {len(fofs)} 条状态机校验完成")
 
+    # --- 伏笔重复账(稳定指纹 fp 相同 = 同一伏笔记了多条;--replace 匹配失败的产物) ---
+    fp_map: dict[str, list[str]] = {}
+    for f in fofs:
+        fpv = f.get("fp")
+        if fpv:
+            fp_map.setdefault(fpv, []).append(f.get("id", "?"))
+    for fpv, ids in fp_map.items():
+        if len(ids) > 1:
+            E(f"伏笔重复账:指纹 {fpv} 对应多条 {'、'.join(ids)} —— 同一伏笔记了两条账,"
+              f"人工确认后删掉没有 plant 节拍的那条(保留内容更完整的一条)")
+    no_fp = [f.get("id", "?") for f in fofs if not f.get("fp")]
+    if no_fp:
+        W(f"{len(no_fp)} 条伏笔无稳定指纹 fp(旧账):{'、'.join(no_fp[:6])} —— "
+          f"下次其所在章 --replace 回写时自动补,或手补")
+
     # --- 角色引用 ---
     id_set = {c.get("id") for c in chars}
     for c in chars:

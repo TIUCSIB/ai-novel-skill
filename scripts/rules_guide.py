@@ -13,6 +13,9 @@
   python rules_guide.py init-voice <项目> [--level L]     # 把 ban 规则写进 style/voice.md 禁用清单(幂等)
   python rules_guide.py calibrate <项目> [--corpus 真人语料.txt] [--out F]
                                                           # 覆盖率+密度证据给规则提转档建议(仿佛/宛如教训的自动化)
+  python rules_guide.py fix <项目> [--chapter N|--pending|--all] [--write]
+                                                          # 安全自动修复:仅限机械标点(半角/重复标点);默认 dry-run,
+                                                          # --write 落盘;修复前后正文指纹必须一致,只动标点不动字
 
 scan 是 taste_audit 的轻量版:单章即时定位用这里,全书归档用 taste_audit。
 init-voice 给每条规则带 `[id]` 标记,因此重跑只重建规则库条目,项目里手工加的条目原样保留;
@@ -74,9 +77,35 @@ def validate(data: dict) -> list[str]:
             errs.append(f"{rid}: 缺 pat")
         elif r["kind"] == "regex":
             try:
-                re.compile(r["pat"])
+                pat = re.compile(r["pat"])
             except re.error as e:
                 errs.append(f"{rid}: 正则无法编译 {e}")
+                continue
+            # 正反例纪律(仿 llmlint):regex 规则必须自带 hit/miss 示例,validate 实跑
+            ex = r.get("ex") or {}
+            hits, misses = ex.get("hit") or [], ex.get("miss") or []
+            if not hits or not misses:
+                errs.append(f"{rid}: regex 规则必须带 ex.hit 与 ex.miss 正反例(各≥1)")
+            else:
+                if not any(pat.search(h) for h in hits):
+                    errs.append(f"{rid}: ex.hit 没有一条被自身正则命中:{hits}")
+                bad = [m for m in misses if pat.search(m)]
+                if bad:
+                    errs.append(f"{rid}: ex.miss 被正则误命中:{bad}")
+        if "fix" in r:
+            fx = r["fix"]
+            if fx.get("handler") == "halfwidth_punct":
+                if "mech" not in cats:
+                    errs.append(f"{rid}: 机械修复器不可用(mech 类目缺失)")
+            else:
+                ops = fx.get("ops")
+                if not ops:
+                    errs.append(f"{rid}: fix 缺 handler 或 ops")
+                for op in ops or []:
+                    try:
+                        re.compile(op.get("regex", ""))
+                    except re.error as e:
+                        errs.append(f"{rid}: fix.ops.regex 无法编译 {e}")
         if not r.get("hint"):
             errs.append(f"{rid}: 缺 hint(改写方向)")
     return errs
@@ -326,6 +355,81 @@ def cmd_calibrate(args) -> int:
     return 0
 
 
+HALFWIDTH_MAP = {",": "，", ".": "。", "!": "！", "?": "？", ";": "；", ":": "："}
+_HW = re.compile(r"(?<=[\u4e00-\u9fff])([,.!?;:])(?=[\u4e00-\u9fff])")
+ALL_PUNCT = re.compile(r"[\u4e00-\u9fff A-Za-z0-9]", re.U)
+
+
+def _prose_signature(text: str) -> str:
+    """只保留汉字/字母/数字的指纹:fix 前后必须一致(改动仅限标点)。"""
+    return "".join(ALL_PUNCT.findall(text))
+
+
+def apply_fixes(text: str, fix_rules: list[dict]) -> tuple[str, list[tuple[dict, int]]]:
+    """机械修复:只允许 半角→全角 / 重复标点收敛。返回 (新文本, [(规则, 次数)])。
+
+    fix 有两种形态:handler=halfwidth_punct(内置),或 ops:[{regex,repl}...]
+    (逐标点类分别收敛,防跨类合并)。"""
+    edits: list[tuple[dict, int]] = []
+    for r in fix_rules:
+        fx = r["fix"]
+        if fx.get("handler") == "halfwidth_punct":
+            cnt = len(_HW.findall(text))
+            if cnt:
+                text = _HW.sub(lambda m: HALFWIDTH_MAP[m.group(1)], text)
+                edits.append((r, cnt))
+        else:
+            cnt = 0
+            for op in fx.get("ops", []):
+                pat = re.compile(op["regex"])
+                cnt += len(pat.findall(text))
+                text = pat.sub(op["repl"], text)
+            if cnt:
+                edits.append((r, cnt))
+    return text, edits
+
+
+def cmd_fix(args) -> int:
+    """安全自动修复(仅限机械标点类):默认 dry-run 列清单,--write 才落盘。
+
+    安全性质:修复前后"汉字/字母/数字指纹"必须完全一致 —— 只动标点,绝不动正文;
+    语义类规则(套装词/句式)永远不在此列,那是要人改写的。
+    """
+    project = Path(args.project)
+    data = load_rules()
+    fix_rules = [r for r in data["rules"] if "fix" in r]
+    if not fix_rules:
+        print("规则库中没有带 fix 的规则。")
+        return 0
+    nums = iter_chapters(project, args)
+    if not nums:
+        print("没有匹配的章节。", file=sys.stderr)
+        return 1
+    total = 0
+    lines: list[str] = [f"# 机械修复({'写入' if args.write else 'dry-run'})—— {len(nums)} 章"]
+    for n in nums:
+        f = ch_path(project, n)
+        if not f.exists():
+            continue
+        old = read_text(f)
+        new, edits = apply_fixes(old, fix_rules)
+        if not edits:
+            continue
+        if _prose_signature(old) != _prose_signature(new):
+            lines.append(f"\n第 {n} 章:⚠ 修复改变了正文指纹,拒绝处理(规则库 fix 配置异常?)")
+            continue
+        cnt = sum(c for _, c in edits)
+        total += cnt
+        desc = "、".join(f"{r['id']}×{c}" for r, c in edits)
+        lines.append(f"\n第 {n} 章:{cnt} 处({desc})")
+        if args.write:
+            f.write_text(new, encoding="utf-8")
+    lines.insert(1, f"\n**共 {total} 处机械标点问题{'已修复' if args.write else '(dry-run,加 --write 落盘)'}**"
+                 + ("" if args.write else ";修复后请复跑 style_stats 与 check_ledger"))
+    print("\n".join(lines))
+    return 0
+
+
 def main() -> int:
     force_utf8_stdio()
     ap = argparse.ArgumentParser(description="分级去 AI 味规则库工具")
@@ -344,6 +448,13 @@ def main() -> int:
     p4 = sub.add_parser("init-voice", help="把 ban 规则写进 style/voice.md 禁用清单")
     p4.add_argument("project")
     p4.add_argument("--level", default="standard", choices=LEVELS)
+    p6 = sub.add_parser("fix", help="安全自动修复(仅机械标点类;默认 dry-run,--write 落盘)")
+    p6.add_argument("project")
+    g6 = p6.add_mutually_exclusive_group()
+    g6.add_argument("--chapter", type=int)
+    g6.add_argument("--pending", action="store_true")
+    g6.add_argument("--all", action="store_true")
+    p6.add_argument("--write", action="store_true", help="真正写回文件(默认 dry-run)")
     p5 = sub.add_parser("calibrate", help="用本书覆盖率(+可选真人语料密度)给规则分级提转档建议")
     p5.add_argument("project")
     p5.add_argument("--corpus", help="真人语料 txt/md 路径(人类 curated 对照,AI/人类密度比)")
@@ -368,6 +479,8 @@ def main() -> int:
         return cmd_scan(args)
     if args.cmd == "calibrate":
         return cmd_calibrate(args)
+    if args.cmd == "fix":
+        return cmd_fix(args)
     return cmd_init_voice(args)
 
 

@@ -2,130 +2,1222 @@
   "version": 1,
   "note": "分级去 AI 味规则库(仿 neuro-book llmlint 的规则模型)。mode=ban 可入黑名单(字面/正则命中即改);mode=watch 只察不禁(单词合法、频率成病,密度判定交给 style_stats)。level 三档递增:core=写作时必守,standard=审校时加查,wide=全书清底时才用。init-voice 只种 ban 规则(core+standard 档)。",
   "cats": {
-    "face":   {"name": "神情套装词", "guide": "眼睛/嘴角/脸上的固定搭配是 AI 味第一重灾区。改法:不写表情,写表情导致的动作与视线落点(他把鱼肚子上那块肉拨进她碗里)。"},
-    "body":   {"name": "身体反应套装", "guide": "震/缩/滞这类全身反应词,一次有效、十次成腔。改法:写局部的、不体面的身体细节(膝盖先着地,人还没倒)。"},
-    "mood":   {"name": "气氛套话与明喻", "guide": "空气凝固/落针可闻是给读者的情绪说明书。改法:写现场里没人管的具体事物(炉上的水开了,咕嘟了半天,没人去提)。仿佛/宛如单独合法,密度闸门交 style_stats。"},
-    "psych":  {"name": "心理直写", "guide": "心中一动/感到一阵XX 是演完了又旁白一遍。改法:情绪交给动作与生理(指节抵着桌面,慢慢泛白)。"},
-    "pacer":  {"name": "节奏加速器", "guide": "瞬间/猛地/陡然单独都合法,病在频率——每一次转折都靠它加速,说明没有一次是靠动作本身完成的。改法:删掉加速器,把动作写清楚。密度闸门在 style_stats(>2.5/千字)。"},
-    "conn":   {"name": "章法连接词", "guide": "然而/与此同时是段落间的万能搭扣,真人转场用空行+地点时间锚(灵木峰。夜。)。密度闸门在 style_stats(>1.0/千字)。"},
-    "syntax": {"name": "句式病", "guide": "不是X而是Y、在……的瞬间、三连排比 —— 模式层面的病,换词逃不掉。改法是拆句、砍到一层。"},
-    "echo":   {"name": "复述类", "guide": "已经演出来的东西再用语言总结一遍(情绪总结/主题总结/对话后翻译潜台词)。计数闸门在 style_stats,改写对照 ai-taste.md 一~五节。"},
-    "talk":   {"name": "对话腔套话", "guide": "闻言/话音刚落/此言一出是 AI 给对话挂的报幕员。改法:让下一个人的动作接话,而不是叙述替对话加旁白。"},
-    "infl":   {"name": "修辞通胀", "guide": "深不可测/惊天动地/倒吸凉气 —— 形容词花光了的标志。改法:给可测的侧面、写具体的连锁反应。"},
-    "filler": {"name": "说教与总结语", "guide": "总之/由此可见/值得注意的是是议论文残留,小说里一律删,让事件自己说话。"},
-    "end":    {"name": "章末三禁", "guide": "总结/反问/抒情升华收尾违反章末三禁。改法:切下一场的第一个动作,或半截对话、突转画面。"},
-    "trans":  {"name": "翻译腔", "guide": "中文原生的故事里不该有英文句法的幽灵。确需翻译腔人设(如外语角色)可破例,记在 voice.md。"},
-    "pov":    {"name": "视角越权", "guide": "叙述提前泄露视角人物不知道的事=烧悬念。他不知道的是每卷至多 1 次。"}
+    "face": {
+      "name": "神情套装词",
+      "guide": "眼睛/嘴角/脸上的固定搭配是 AI 味第一重灾区。改法:不写表情,写表情导致的动作与视线落点(他把鱼肚子上那块肉拨进她碗里)。"
+    },
+    "body": {
+      "name": "身体反应套装",
+      "guide": "震/缩/滞这类全身反应词,一次有效、十次成腔。改法:写局部的、不体面的身体细节(膝盖先着地,人还没倒)。"
+    },
+    "mood": {
+      "name": "气氛套话与明喻",
+      "guide": "空气凝固/落针可闻是给读者的情绪说明书。改法:写现场里没人管的具体事物(炉上的水开了,咕嘟了半天,没人去提)。仿佛/宛如单独合法,密度闸门交 style_stats。"
+    },
+    "psych": {
+      "name": "心理直写",
+      "guide": "心中一动/感到一阵XX 是演完了又旁白一遍。改法:情绪交给动作与生理(指节抵着桌面,慢慢泛白)。"
+    },
+    "pacer": {
+      "name": "节奏加速器",
+      "guide": "瞬间/猛地/陡然单独都合法,病在频率——每一次转折都靠它加速,说明没有一次是靠动作本身完成的。改法:删掉加速器,把动作写清楚。密度闸门在 style_stats(>2.5/千字)。"
+    },
+    "conn": {
+      "name": "章法连接词",
+      "guide": "然而/与此同时是段落间的万能搭扣,真人转场用空行+地点时间锚(灵木峰。夜。)。密度闸门在 style_stats(>1.0/千字)。"
+    },
+    "syntax": {
+      "name": "句式病",
+      "guide": "不是X而是Y、在……的瞬间、三连排比 —— 模式层面的病,换词逃不掉。改法是拆句、砍到一层。"
+    },
+    "echo": {
+      "name": "复述类",
+      "guide": "已经演出来的东西再用语言总结一遍(情绪总结/主题总结/对话后翻译潜台词)。计数闸门在 style_stats,改写对照 ai-taste.md 一~五节。"
+    },
+    "talk": {
+      "name": "对话腔套话",
+      "guide": "闻言/话音刚落/此言一出是 AI 给对话挂的报幕员。改法:让下一个人的动作接话,而不是叙述替对话加旁白。"
+    },
+    "infl": {
+      "name": "修辞通胀",
+      "guide": "深不可测/惊天动地/倒吸凉气 —— 形容词花光了的标志。改法:给可测的侧面、写具体的连锁反应。"
+    },
+    "filler": {
+      "name": "说教与总结语",
+      "guide": "总之/由此可见/值得注意的是是议论文残留,小说里一律删,让事件自己说话。"
+    },
+    "end": {
+      "name": "章末三禁",
+      "guide": "总结/反问/抒情升华收尾违反章末三禁。改法:切下一场的第一个动作,或半截对话、突转画面。"
+    },
+    "trans": {
+      "name": "翻译腔",
+      "guide": "中文原生的故事里不该有英文句法的幽灵。确需翻译腔人设(如外语角色)可破例,记在 voice.md。"
+    },
+    "pov": {
+      "name": "视角越权",
+      "guide": "叙述提前泄露视角人物不知道的事=烧悬念。他不知道的是每卷至多 1 次。"
+    },
+    "mech": {
+      "name": "机械标点错误",
+      "guide": "半角标点夹汉字、重复标点不是风格问题,是打字残留,规则库唯一允许自动修复(auto-fix)的两类;修复后必须复跑 style_stats 确认无新警告。"
+    }
   },
   "rules": [
-    {"id": "face-yisi", "cat": "face", "level": "core", "mode": "ban", "kind": "word", "pat": "一丝", "hint": "一丝+抽象名词=套装描写,整句重写"},
-    {"id": "face-yimo", "cat": "face", "level": "core", "mode": "ban", "kind": "word", "pat": "一抹", "hint": "同上,写具体动作"},
-    {"id": "face-mouzhong", "cat": "face", "level": "core", "mode": "ban", "kind": "word", "pat": "眸中", "hint": "写目光落在哪,不写眸中有什么"},
-    {"id": "face-yanzhongshan", "cat": "face", "level": "core", "mode": "ban", "kind": "word", "pat": "眼中闪过", "hint": "换视线停顿/答话节奏等具体信号"},
-    {"id": "face-yandishan", "cat": "face", "level": "core", "mode": "ban", "kind": "word", "pat": "眼底闪过", "hint": "同上"},
-    {"id": "face-zuijiao", "cat": "face", "level": "core", "mode": "ban", "kind": "regex", "pat": "嘴角(?:微微)?(?:上扬|勾起|弯了弯)", "hint": "笑就写笑,或写没笑到眼睛里"},
-    {"id": "face-yanshen", "cat": "face", "level": "standard", "mode": "ban", "kind": "word", "pat": "眼神一凛", "hint": "写他随后做了什么"},
-    {"id": "face-lianshang", "cat": "face", "level": "standard", "mode": "ban", "kind": "regex", "pat": "脸上(?:顿时)?浮现", "hint": "浮现+情绪名=说明书,删"},
-    {"id": "face-muguang", "cat": "face", "level": "standard", "mode": "watch", "kind": "word", "pat": "目光如炬", "hint": "成语化形容,偶尔可以,连用即腔"},
-    {"id": "face-ruoyousi", "cat": "face", "level": "wide", "mode": "watch", "kind": "word", "pat": "若有所思", "hint": "全书清底时看密度"},
-
-    {"id": "body-lei", "cat": "body", "level": "core", "mode": "ban", "kind": "word", "pat": "如遭雷击", "hint": "写呆住的过程:张了张嘴,半天才发出声音"},
-    {"id": "body-jiaoq", "cat": "body", "level": "core", "mode": "ban", "kind": "word", "pat": "娇躯一震", "hint": "删"},
-    {"id": "body-hunshen", "cat": "body", "level": "standard", "mode": "ban", "kind": "word", "pat": "浑身一震", "hint": "写局部反应"},
-    {"id": "body-shenti", "cat": "body", "level": "standard", "mode": "ban", "kind": "word", "pat": "身体一震", "hint": "同上"},
-    {"id": "body-tongkong", "cat": "body", "level": "standard", "mode": "ban", "kind": "regex", "pat": "瞳孔(?:骤|猛|微)?缩", "hint": "惊讶写行为,不写生理特写"},
-    {"id": "body-huxi", "cat": "body", "level": "standard", "mode": "ban", "kind": "word", "pat": "呼吸一滞", "hint": "同上"},
-    {"id": "body-xintoujin", "cat": "body", "level": "core", "mode": "ban", "kind": "word", "pat": "心头一紧", "hint": "紧张写手里的动作变形"},
-    {"id": "body-xintouchen", "cat": "body", "level": "standard", "mode": "ban", "kind": "word", "pat": "心头一沉", "hint": "同上"},
-    {"id": "body-xinzang", "cat": "body", "level": "core", "mode": "ban", "kind": "regex", "pat": "心脏.{0,4}漏跳", "hint": "删,换成外在动作"},
-
-    {"id": "mood-ninggu", "cat": "mood", "level": "core", "mode": "ban", "kind": "word", "pat": "空气仿佛凝固", "hint": "写无人打理的具体事物"},
-    {"id": "mood-jingshi", "cat": "mood", "level": "core", "mode": "ban", "kind": "word", "pat": "时间仿佛静止", "hint": "删"},
-    {"id": "mood-fangfu", "cat": "mood", "level": "core", "mode": "watch", "kind": "word", "pat": "仿佛", "hint": "正常明喻词,单个合法、频率成病;密度交 style_stats 比喻闸门,不进黑名单"},
-    {"id": "mood-wanru", "cat": "mood", "level": "standard", "mode": "watch", "kind": "word", "pat": "宛如", "hint": "同上,明喻密度由 style_stats 判,不作逐处禁令"},
-    {"id": "mood-you", "cat": "mood", "level": "standard", "mode": "watch", "kind": "word", "pat": "犹如", "hint": "密度观察"},
-    {"id": "mood-luozhen", "cat": "mood", "level": "standard", "mode": "ban", "kind": "word", "pat": "落针可闻", "hint": "写安静里的第一个声音"},
-    {"id": "mood-qifen", "cat": "mood", "level": "standard", "mode": "ban", "kind": "regex", "pat": "气氛[^。]{0,6}(?:紧张|凝固|尴尬)", "hint": "气氛用行为演,不用形容"},
-    {"id": "mood-guiyi", "cat": "mood", "level": "standard", "mode": "watch", "kind": "word", "pat": "诡异的气氛", "hint": "密度观察"},
-
-    {"id": "psych-buyjin", "cat": "psych", "level": "core", "mode": "ban", "kind": "word", "pat": "不禁", "hint": "情绪该由事件引发,不是'不禁'标注出来的;删掉读一遍"},
-    {"id": "psych-shenxi", "cat": "psych", "level": "core", "mode": "ban", "kind": "word", "pat": "深吸一口气", "hint": "AI 的万能定场动作;写他开口前的具体小动作"},
-    {"id": "psych-yidong", "cat": "psych", "level": "core", "mode": "ban", "kind": "word", "pat": "心中一动", "hint": "想到什么就写出什么"},
-    {"id": "psych-yilin", "cat": "psych", "level": "core", "mode": "ban", "kind": "word", "pat": "心中一凛", "hint": "警觉写指尖停了半拍"},
-    {"id": "psych-gandao", "cat": "psych", "level": "standard", "mode": "ban", "kind": "regex", "pat": "(?:他|她)(?:感到|觉得)(?:一阵|一股)", "hint": "感到+量词+抽象名=直写情绪,删"},
-    {"id": "psych-xinxiang", "cat": "psych", "level": "standard", "mode": "watch", "kind": "word", "pat": "心想", "hint": "内心戏密度高时改外化动作(限知视角可用)"},
-    {"id": "psych-yishi", "cat": "psych", "level": "standard", "mode": "watch", "kind": "word", "pat": "意识到", "hint": "认知转折写证据,不写'他意识到'"},
-
-    {"id": "pacer-shunjian", "cat": "pacer", "level": "standard", "mode": "watch", "kind": "word", "pat": "瞬间", "hint": "密度闸门在 style_stats(>2.5/千字)"},
-    {"id": "pacer-chana", "cat": "pacer", "level": "standard", "mode": "watch", "kind": "word", "pat": "刹那", "hint": "同上;换同义词不解决问题"},
-    {"id": "pacer-zhuanshun", "cat": "pacer", "level": "standard", "mode": "watch", "kind": "word", "pat": "转瞬", "hint": "同上"},
-    {"id": "pacer-xuyu", "cat": "pacer", "level": "standard", "mode": "watch", "kind": "word", "pat": "须臾", "hint": "同上"},
-    {"id": "pacer-qingke", "cat": "pacer", "level": "standard", "mode": "watch", "kind": "word", "pat": "顷刻", "hint": "同上"},
-    {"id": "pacer-doudan", "cat": "pacer", "level": "standard", "mode": "watch", "kind": "word", "pat": "陡然", "hint": "同上"},
-    {"id": "pacer-zouran", "cat": "pacer", "level": "standard", "mode": "watch", "kind": "word", "pat": "骤然", "hint": "同上"},
-    {"id": "pacer-mengdi", "cat": "pacer", "level": "core", "mode": "watch", "kind": "word", "pat": "猛地", "hint": "同上"},
-    {"id": "pacer-mengd-de", "cat": "pacer", "level": "standard", "mode": "watch", "kind": "word", "pat": "猛的", "hint": "同上(的/地混用另计)"},
-    {"id": "pacer-huoran", "cat": "pacer", "level": "standard", "mode": "watch", "kind": "word", "pat": "霍然", "hint": "同上"},
-    {"id": "pacer-dongshi", "cat": "pacer", "level": "standard", "mode": "watch", "kind": "word", "pat": "顿时", "hint": "同上"},
-    {"id": "pacer-modi", "cat": "pacer", "level": "standard", "mode": "watch", "kind": "word", "pat": "蓦地", "hint": "同上"},
-    {"id": "pacer-shu", "cat": "pacer", "level": "standard", "mode": "watch", "kind": "word", "pat": "倏", "hint": "同上"},
-
-    {"id": "conn-raner", "cat": "conn", "level": "standard", "mode": "watch", "kind": "word", "pat": "然而", "hint": "转折靠事件,不靠连词"},
-    {"id": "conn-tongshi", "cat": "conn", "level": "standard", "mode": "watch", "kind": "word", "pat": "与此同时", "hint": "切场景用空行+地点锚"},
-    {"id": "conn-cic", "cat": "conn", "level": "standard", "mode": "watch", "kind": "word", "pat": "此时此刻", "hint": "删"},
-    {"id": "conn-buzhiwehe", "cat": "conn", "level": "standard", "mode": "watch", "kind": "word", "pat": "不知为何", "hint": "要么给出原因要么让角色自己找不到原因"},
-    {"id": "conn-qiliao", "cat": "conn", "level": "standard", "mode": "watch", "kind": "word", "pat": "岂料", "hint": "反转靠事件本身"},
-    {"id": "conn-shuizhi", "cat": "conn", "level": "standard", "mode": "watch", "kind": "word", "pat": "谁知", "hint": "同上"},
-    {"id": "conn-buyoude", "cat": "conn", "level": "standard", "mode": "watch", "kind": "word", "pat": "不由得", "hint": "删后读一遍,多数照样通"},
-
-    {"id": "syn-bushi", "cat": "syntax", "level": "core", "mode": "ban", "kind": "regex", "pat": "不是[^。!?]{1,12}[,，]而是", "hint": "偶用有力,惯用成腔;直接写'是Y'并给证据"},
-    {"id": "syn-zaideshunjian", "cat": "syntax", "level": "standard", "mode": "watch", "kind": "regex", "pat": "在[^。，！？]{0,10}的(?:瞬间|刹那|一瞬)", "hint": "万能从句;拆成两个动作,密度闸门在 style_stats"},
-    {"id": "syn-sanlian", "cat": "syntax", "level": "standard", "mode": "ban", "kind": "regex", "pat": "一种[^，。]{2,10},一种[^，。]{2,10},一种[^，。]{2,10}", "hint": "三连排比砍到一层"},
-
-    {"id": "echo-qingxu", "cat": "echo", "level": "standard", "mode": "watch", "kind": "regex", "pat": "(?:内心|心中|心底|心里)(?:充满|涌起|泛起|升起|掀起|一片)", "hint": "复述类,计数闸门在 style_stats(>2/章)"},
-    {"id": "echo-moyan", "cat": "echo", "level": "standard", "mode": "watch", "kind": "regex", "pat": "(?:复杂的|难以言喻的|说不出的|莫名的|异样的)(?:情绪|感觉|滋味|心境)", "hint": "命名它或写它导致的行为"},
-    {"id": "echo-zhemi", "cat": "echo", "level": "standard", "mode": "watch", "kind": "regex", "pat": "(?:这一刻|那一刻|从这一刻起)[^。！？]{0,25}(?:明白|懂得|知道|领悟|意识到)", "hint": "主题总结,>1/章报警"},
-    {"id": "echo-duihua", "cat": "echo", "level": "standard", "mode": "watch", "kind": "regex", "pat": "[”」][^。！？]{0,40}?(?:眼|眸|神情|神色|语气|目光)(?:中|里|间)?(?:透露出|充满|写满|带着|闪过|流露出)", "hint": "对话后翻译潜台词,>2/章报警"},
-
-    {"id": "talk-yanwen", "cat": "talk", "level": "standard", "mode": "watch", "kind": "word", "pat": "闻言", "hint": "网文常用,连密度高时换'手一顿''抬眼'等行为接话"},
-    {"id": "talk-huayin", "cat": "talk", "level": "standard", "mode": "ban", "kind": "word", "pat": "话音刚落", "hint": "写谁被打断、谁抢话,不写报幕"},
-    {"id": "talk-ciyan", "cat": "talk", "level": "standard", "mode": "ban", "kind": "word", "pat": "此言一出", "hint": "同上,写一个人的具体反应"},
-    {"id": "talk-tingdao", "cat": "talk", "level": "standard", "mode": "ban", "kind": "word", "pat": "听到这话", "hint": "刺激直接接反应(MRU),删引导语"},
-    {"id": "talk-lenglen", "cat": "talk", "level": "standard", "mode": "ban", "kind": "word", "pat": "冷冷地说", "hint": "语气用措辞和句子长短体现"},
-    {"id": "talk-dandan", "cat": "talk", "level": "standard", "mode": "ban", "kind": "word", "pat": "淡淡地说", "hint": "同上"},
-    {"id": "talk-chensheng", "cat": "talk", "level": "wide", "mode": "watch", "kind": "word", "pat": "沉声道", "hint": "密度观察"},
-
-    {"id": "infl-shenbu", "cat": "infl", "level": "standard", "mode": "watch", "kind": "word", "pat": "深不可测", "hint": "给可测的侧面:神念扫过去没能读出境界"},
-    {"id": "infl-daoxi", "cat": "infl", "level": "core", "mode": "ban", "kind": "regex", "pat": "倒吸一口[冷凉]气", "hint": "全场反应的写法是写其中一个人"},
-    {"id": "infl-wufayan", "cat": "infl", "level": "standard", "mode": "ban", "kind": "word", "pat": "无法言喻", "hint": "命名它,或删"},
-    {"id": "infl-bukes", "cat": "infl", "level": "standard", "mode": "watch", "kind": "word", "pat": "不可思议", "hint": "密度观察"},
-    {"id": "infl-tianfu", "cat": "infl", "level": "standard", "mode": "ban", "kind": "word", "pat": "翻天覆地", "hint": "挑一样东西写前后对比"},
-    {"id": "infl-jingtian", "cat": "infl", "level": "wide", "mode": "watch", "kind": "word", "pat": "惊天动地", "hint": "密度观察"},
-    {"id": "infl-wuyulun", "cat": "infl", "level": "wide", "mode": "watch", "kind": "word", "pat": "无与伦比", "hint": "密度观察"},
-    {"id": "infl-kongbu", "cat": "infl", "level": "wide", "mode": "ban", "kind": "word", "pat": "恐怖如斯", "hint": "梗化夸饰,删"},
-
-    {"id": "fill-zongzhi", "cat": "filler", "level": "core", "mode": "ban", "kind": "regex", "pat": "总之[,,。!]", "hint": "议论文残留,删"},
-    {"id": "fill-bijing", "cat": "filler", "level": "core", "mode": "ban", "kind": "regex", "pat": "(毕竟|总的来说)[,,。]", "hint": "同上"},
-    {"id": "fill-youkc", "cat": "filler", "level": "standard", "mode": "ban", "kind": "word", "pat": "由此可见", "hint": "删,让事件自己得出结论"},
-    {"id": "fill-blcr", "cat": "filler", "level": "standard", "mode": "ban", "kind": "word", "pat": "不难看出", "hint": "同上"},
-    {"id": "fill-zhude", "cat": "filler", "level": "standard", "mode": "ban", "kind": "word", "pat": "值得注意的是", "hint": "同上"},
-    {"id": "fill-wuhy", "cat": "filler", "level": "standard", "mode": "ban", "kind": "word", "pat": "毫无疑问", "hint": "删后读一遍"},
-    {"id": "fill-yejs", "cat": "filler", "level": "standard", "mode": "watch", "kind": "word", "pat": "也就是说", "hint": "复述信号,密度观察"},
-    {"id": "fill-xianran", "cat": "filler", "level": "wide", "mode": "watch", "kind": "word", "pat": "显然", "hint": "密度观察"},
-
-    {"id": "end-wumian", "cat": "end", "level": "core", "mode": "ban", "kind": "regex", "pat": "(?:这一夜|这一晚)[^。]{0,6}(?:无眠|注定)", "hint": "章末三禁;切下一场的第一个动作"},
-    {"id": "end-chilun", "cat": "end", "level": "core", "mode": "ban", "kind": "word", "pat": "命运的齿轮", "hint": "删,用下一章开头接住"},
-    {"id": "end-gaibian", "cat": "end", "level": "core", "mode": "ban", "kind": "regex", "pat": "一切(?:都|终将)?将?改变", "hint": "总结句收尾,删"},
-    {"id": "end-zhengkai", "cat": "end", "level": "standard", "mode": "ban", "kind": "regex", "pat": "[^。]{0,12}才真正开始", "hint": "廉价悬念,删"},
-    {"id": "end-xinpian", "cat": "end", "level": "wide", "mode": "watch", "kind": "word", "pat": "新的篇章", "hint": "升华腔,密度观察"},
-
-    {"id": "trans-owotian", "cat": "trans", "level": "standard", "mode": "ban", "kind": "regex", "pat": "哦[，,]?我的天", "hint": "翻译腔惊叹,写本土反应"},
-    {"id": "trans-gaisi", "cat": "trans", "level": "standard", "mode": "watch", "kind": "word", "pat": "该死的", "hint": "密度观察(角色语癖除外,记 voice.md)"},
-    {"id": "trans-kan在", "cat": "trans", "level": "wide", "mode": "ban", "kind": "regex", "pat": "看在[^。]{1,12}的份上", "hint": "英文句法直译残留"},
-
-    {"id": "poub-buzhdao", "cat": "pov", "level": "standard", "mode": "watch", "kind": "word", "pat": "他不知道的是", "hint": "叙述越权=烧悬念,每卷至多 1 次(style-guide 4)"},
-    {"id": "pov-shubuzhi", "cat": "pov", "level": "standard", "mode": "ban", "kind": "word", "pat": "殊不知", "hint": "同上"},
-    {"id": "pov-quebu", "cat": "pov", "level": "standard", "mode": "watch", "kind": "word", "pat": "却不知", "hint": "同上"},
-    {"id": "pov-meiyouren", "cat": "pov", "level": "wide", "mode": "ban", "kind": "regex", "pat": "没有人知道[^。]{0,20}(?:即将|将会|此后的)", "hint": "全知预告腔,删"}
+    {
+      "id": "face-yisi",
+      "cat": "face",
+      "level": "core",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "一丝",
+      "hint": "一丝+抽象名词=套装描写,整句重写"
+    },
+    {
+      "id": "face-yimo",
+      "cat": "face",
+      "level": "core",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "一抹",
+      "hint": "同上,写具体动作"
+    },
+    {
+      "id": "face-mouzhong",
+      "cat": "face",
+      "level": "core",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "眸中",
+      "hint": "写目光落在哪,不写眸中有什么"
+    },
+    {
+      "id": "face-yanzhongshan",
+      "cat": "face",
+      "level": "core",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "眼中闪过",
+      "hint": "换视线停顿/答话节奏等具体信号"
+    },
+    {
+      "id": "face-yandishan",
+      "cat": "face",
+      "level": "core",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "眼底闪过",
+      "hint": "同上"
+    },
+    {
+      "id": "face-zuijiao",
+      "cat": "face",
+      "level": "core",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "嘴角(?:微微)?(?:上扬|勾起|弯了弯)",
+      "hint": "笑就写笑,或写没笑到眼睛里",
+      "ex": {
+        "hit": [
+          "他嘴角勾起一抹弧度",
+          "她嘴角微微上扬"
+        ],
+        "miss": [
+          "他嘴角抿成一条线",
+          "她嘴角干裂起皮"
+        ]
+      }
+    },
+    {
+      "id": "face-yanshen",
+      "cat": "face",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "眼神一凛",
+      "hint": "写他随后做了什么"
+    },
+    {
+      "id": "face-lianshang",
+      "cat": "face",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "脸上(?:顿时)?浮现",
+      "hint": "浮现+情绪名=说明书,删",
+      "ex": {
+        "hit": [
+          "他脸上顿时浮现出笑容"
+        ],
+        "miss": [
+          "问题开始浮现",
+          "地图上浮现出新的边界"
+        ]
+      }
+    },
+    {
+      "id": "face-muguang",
+      "cat": "face",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "目光如炬",
+      "hint": "成语化形容,偶尔可以,连用即腔"
+    },
+    {
+      "id": "face-ruoyousi",
+      "cat": "face",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "若有所思",
+      "hint": "全书清底时看密度"
+    },
+    {
+      "id": "body-lei",
+      "cat": "body",
+      "level": "core",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "如遭雷击",
+      "hint": "写呆住的过程:张了张嘴,半天才发出声音"
+    },
+    {
+      "id": "body-jiaoq",
+      "cat": "body",
+      "level": "core",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "娇躯一震",
+      "hint": "删"
+    },
+    {
+      "id": "body-hunshen",
+      "cat": "body",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "浑身一震",
+      "hint": "写局部反应"
+    },
+    {
+      "id": "body-shenti",
+      "cat": "body",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "身体一震",
+      "hint": "同上"
+    },
+    {
+      "id": "body-tongkong",
+      "cat": "body",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "瞳孔(?:骤|猛|微)?缩",
+      "hint": "惊讶写行为,不写生理特写",
+      "ex": {
+        "hit": [
+          "他瞳孔骤缩",
+          "瞳孔猛地收缩",
+          "她瞳孔微缩"
+        ],
+        "miss": [
+          "惊讶得瞳孔放大",
+          "他缩在门后"
+        ]
+      }
+    },
+    {
+      "id": "body-huxi",
+      "cat": "body",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "呼吸一滞",
+      "hint": "同上"
+    },
+    {
+      "id": "body-xintoujin",
+      "cat": "body",
+      "level": "core",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "心头一紧",
+      "hint": "紧张写手里的动作变形"
+    },
+    {
+      "id": "body-xintouchen",
+      "cat": "body",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "心头一沉",
+      "hint": "同上"
+    },
+    {
+      "id": "body-xinzang",
+      "cat": "body",
+      "level": "core",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "心脏.{0,4}漏跳",
+      "hint": "删,换成外在动作",
+      "ex": {
+        "hit": [
+          "心脏漏跳了一拍",
+          "心脏仿佛漏跳半拍"
+        ],
+        "miss": [
+          "心跳如鼓",
+          "心率过快"
+        ]
+      }
+    },
+    {
+      "id": "mood-ninggu",
+      "cat": "mood",
+      "level": "core",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "空气仿佛凝固",
+      "hint": "写无人打理的具体事物"
+    },
+    {
+      "id": "mood-jingshi",
+      "cat": "mood",
+      "level": "core",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "时间仿佛静止",
+      "hint": "删"
+    },
+    {
+      "id": "mood-fangfu",
+      "cat": "mood",
+      "level": "core",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "仿佛",
+      "hint": "正常明喻词,单个合法、频率成病;密度交 style_stats 比喻闸门,不进黑名单"
+    },
+    {
+      "id": "mood-wanru",
+      "cat": "mood",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "宛如",
+      "hint": "同上,明喻密度由 style_stats 判,不作逐处禁令"
+    },
+    {
+      "id": "mood-you",
+      "cat": "mood",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "犹如",
+      "hint": "密度观察"
+    },
+    {
+      "id": "mood-luozhen",
+      "cat": "mood",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "落针可闻",
+      "hint": "写安静里的第一个声音"
+    },
+    {
+      "id": "mood-qifen",
+      "cat": "mood",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "气氛[^。]{0,6}(?:紧张|凝固|尴尬)",
+      "hint": "气氛用行为演,不用形容",
+      "ex": {
+        "hit": [
+          "气氛顿时紧张起来",
+          "会场的气氛凝固了"
+        ],
+        "miss": [
+          "气氛组登场",
+          "房间里的空气清新"
+        ]
+      }
+    },
+    {
+      "id": "mood-guiyi",
+      "cat": "mood",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "诡异的气氛",
+      "hint": "密度观察"
+    },
+    {
+      "id": "psych-buyjin",
+      "cat": "psych",
+      "level": "core",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "不禁",
+      "hint": "情绪该由事件引发,不是'不禁'标注出来的;删掉读一遍"
+    },
+    {
+      "id": "psych-shenxi",
+      "cat": "psych",
+      "level": "core",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "深吸一口气",
+      "hint": "AI 的万能定场动作;写他开口前的具体小动作"
+    },
+    {
+      "id": "psych-yidong",
+      "cat": "psych",
+      "level": "core",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "心中一动",
+      "hint": "想到什么就写出什么"
+    },
+    {
+      "id": "psych-yilin",
+      "cat": "psych",
+      "level": "core",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "心中一凛",
+      "hint": "警觉写指尖停了半拍"
+    },
+    {
+      "id": "psych-gandao",
+      "cat": "psych",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "(?:他|她)(?:感到|觉得)(?:一阵|一股)",
+      "hint": "感到+量词+抽象名=直写情绪,删",
+      "ex": {
+        "hit": [
+          "他感到一阵寒意",
+          "她觉得一股委屈"
+        ],
+        "miss": [
+          "他感到害怕",
+          "这股味道一阵一阵的"
+        ]
+      }
+    },
+    {
+      "id": "psych-xinxiang",
+      "cat": "psych",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "心想",
+      "hint": "内心戏密度高时改外化动作(限知视角可用)"
+    },
+    {
+      "id": "psych-yishi",
+      "cat": "psych",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "意识到",
+      "hint": "认知转折写证据,不写'他意识到'"
+    },
+    {
+      "id": "pacer-shunjian",
+      "cat": "pacer",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "瞬间",
+      "hint": "密度闸门在 style_stats(>2.5/千字)"
+    },
+    {
+      "id": "pacer-chana",
+      "cat": "pacer",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "刹那",
+      "hint": "同上;换同义词不解决问题"
+    },
+    {
+      "id": "pacer-zhuanshun",
+      "cat": "pacer",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "转瞬",
+      "hint": "同上"
+    },
+    {
+      "id": "pacer-xuyu",
+      "cat": "pacer",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "须臾",
+      "hint": "同上"
+    },
+    {
+      "id": "pacer-qingke",
+      "cat": "pacer",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "顷刻",
+      "hint": "同上"
+    },
+    {
+      "id": "pacer-doudan",
+      "cat": "pacer",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "陡然",
+      "hint": "同上"
+    },
+    {
+      "id": "pacer-zouran",
+      "cat": "pacer",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "骤然",
+      "hint": "同上"
+    },
+    {
+      "id": "pacer-mengdi",
+      "cat": "pacer",
+      "level": "core",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "猛地",
+      "hint": "同上"
+    },
+    {
+      "id": "pacer-mengd-de",
+      "cat": "pacer",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "猛的",
+      "hint": "同上(的/地混用另计)"
+    },
+    {
+      "id": "pacer-huoran",
+      "cat": "pacer",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "霍然",
+      "hint": "同上"
+    },
+    {
+      "id": "pacer-dongshi",
+      "cat": "pacer",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "顿时",
+      "hint": "同上"
+    },
+    {
+      "id": "pacer-modi",
+      "cat": "pacer",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "蓦地",
+      "hint": "同上"
+    },
+    {
+      "id": "pacer-shu",
+      "cat": "pacer",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "倏",
+      "hint": "同上"
+    },
+    {
+      "id": "conn-raner",
+      "cat": "conn",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "然而",
+      "hint": "转折靠事件,不靠连词"
+    },
+    {
+      "id": "conn-tongshi",
+      "cat": "conn",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "与此同时",
+      "hint": "切场景用空行+地点锚"
+    },
+    {
+      "id": "conn-cic",
+      "cat": "conn",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "此时此刻",
+      "hint": "删"
+    },
+    {
+      "id": "conn-buzhiwehe",
+      "cat": "conn",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "不知为何",
+      "hint": "要么给出原因要么让角色自己找不到原因"
+    },
+    {
+      "id": "conn-qiliao",
+      "cat": "conn",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "岂料",
+      "hint": "反转靠事件本身"
+    },
+    {
+      "id": "conn-shuizhi",
+      "cat": "conn",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "谁知",
+      "hint": "同上"
+    },
+    {
+      "id": "conn-buyoude",
+      "cat": "conn",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "不由得",
+      "hint": "删后读一遍,多数照样通"
+    },
+    {
+      "id": "syn-bushi",
+      "cat": "syntax",
+      "level": "core",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "不是[^。!?]{1,12}[,，]而是",
+      "hint": "偶用有力,惯用成腔;直接写'是Y'并给证据",
+      "ex": {
+        "hit": [
+          "这不是退让,而是蓄力",
+          "他不是凡人,而是仙"
+        ],
+        "miss": [
+          "这条路不是终点",
+          "他不是什么坏人,只是固执"
+        ]
+      }
+    },
+    {
+      "id": "syn-zaideshunjian",
+      "cat": "syntax",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "regex",
+      "pat": "在[^。，！？]{0,10}的(?:瞬间|刹那|一瞬)",
+      "hint": "万能从句;拆成两个动作,密度闸门在 style_stats",
+      "ex": {
+        "hit": [
+          "在门开的瞬间,他僵住了",
+          "在烛火熄灭的一瞬"
+        ],
+        "miss": [
+          "就在那一瞬间,烟花升空",
+          "那一刹那的事"
+        ]
+      }
+    },
+    {
+      "id": "syn-sanlian",
+      "cat": "syntax",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "一种[^，。]{2,10},一种[^，。]{2,10},一种[^，。]{2,10}",
+      "hint": "三连排比砍到一层",
+      "ex": {
+        "hit": [
+          "那是一种勇气,一种智慧,一种担当"
+        ],
+        "miss": [
+          "他有一种说不清的感觉"
+        ]
+      }
+    },
+    {
+      "id": "echo-qingxu",
+      "cat": "echo",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "regex",
+      "pat": "(?:内心|心中|心底|心里)(?:充满|涌起|泛起|升起|掀起|一片)",
+      "hint": "复述类,计数闸门在 style_stats(>2/章)",
+      "ex": {
+        "hit": [
+          "心中涌起波澜",
+          "内心充满期待"
+        ],
+        "miss": [
+          "心里那根弦断了",
+          "胸中块垒"
+        ]
+      }
+    },
+    {
+      "id": "echo-moyan",
+      "cat": "echo",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "regex",
+      "pat": "(?:复杂的|难以言喻的|说不出的|莫名的|异样的)(?:情绪|感觉|滋味|心境)",
+      "hint": "命名它或写它导致的行为",
+      "ex": {
+        "hit": [
+          "一种说不出的滋味",
+          "复杂的情绪涌上"
+        ],
+        "miss": [
+          "复杂的公式",
+          "莫名的地方"
+        ]
+      }
+    },
+    {
+      "id": "echo-zhemi",
+      "cat": "echo",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "regex",
+      "pat": "(?:这一刻|那一刻|从这一刻起)[^。！？]{0,25}(?:明白|懂得|知道|领悟|意识到)",
+      "hint": "主题总结,>1/章报警",
+      "ex": {
+        "hit": [
+          "那一刻他终于明白",
+          "从这一刻起她懂了"
+        ],
+        "miss": [
+          "下一刻,他意识到危险",
+          "他明白过来的那一刻早已过去"
+        ]
+      }
+    },
+    {
+      "id": "echo-duihua",
+      "cat": "echo",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "regex",
+      "pat": "[”」][^。！？]{0,40}?(?:眼|眸|神情|神色|语气|目光)(?:中|里|间)?(?:透露出|充满|写满|带着|闪过|流露出)",
+      "hint": "对话后翻译潜台词,>2/章报警",
+      "ex": {
+        "hit": [
+          "“我没事。”她的目光里带着闪躲",
+          "“走。”话音里透出疲惫"
+        ],
+        "miss": [
+          "“我没事。”她说完就走了",
+          "“走。”他转身锁门"
+        ]
+      }
+    },
+    {
+      "id": "talk-yanwen",
+      "cat": "talk",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "闻言",
+      "hint": "网文常用,连密度高时换'手一顿''抬眼'等行为接话"
+    },
+    {
+      "id": "talk-huayin",
+      "cat": "talk",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "话音刚落",
+      "hint": "写谁被打断、谁抢话,不写报幕"
+    },
+    {
+      "id": "talk-ciyan",
+      "cat": "talk",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "此言一出",
+      "hint": "同上,写一个人的具体反应"
+    },
+    {
+      "id": "talk-tingdao",
+      "cat": "talk",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "听到这话",
+      "hint": "刺激直接接反应(MRU),删引导语"
+    },
+    {
+      "id": "talk-lenglen",
+      "cat": "talk",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "冷冷地说",
+      "hint": "语气用措辞和句子长短体现"
+    },
+    {
+      "id": "talk-dandan",
+      "cat": "talk",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "淡淡地说",
+      "hint": "同上"
+    },
+    {
+      "id": "talk-chensheng",
+      "cat": "talk",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "沉声道",
+      "hint": "密度观察"
+    },
+    {
+      "id": "infl-shenbu",
+      "cat": "infl",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "深不可测",
+      "hint": "给可测的侧面:神念扫过去没能读出境界"
+    },
+    {
+      "id": "infl-daoxi",
+      "cat": "infl",
+      "level": "core",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "倒吸一口[冷凉]气",
+      "hint": "全场反应的写法是写其中一个人",
+      "ex": {
+        "hit": [
+          "众人倒吸一口凉气",
+          "他倒吸一口冷气"
+        ],
+        "miss": [
+          "他深吸一口凉茶",
+          "倒着吸了口气"
+        ]
+      }
+    },
+    {
+      "id": "infl-wufayan",
+      "cat": "infl",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "无法言喻",
+      "hint": "命名它,或删"
+    },
+    {
+      "id": "infl-bukes",
+      "cat": "infl",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "不可思议",
+      "hint": "密度观察"
+    },
+    {
+      "id": "infl-tianfu",
+      "cat": "infl",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "翻天覆地",
+      "hint": "挑一样东西写前后对比"
+    },
+    {
+      "id": "infl-jingtian",
+      "cat": "infl",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "惊天动地",
+      "hint": "密度观察"
+    },
+    {
+      "id": "infl-wuyulun",
+      "cat": "infl",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "无与伦比",
+      "hint": "密度观察"
+    },
+    {
+      "id": "infl-kongbu",
+      "cat": "infl",
+      "level": "wide",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "恐怖如斯",
+      "hint": "梗化夸饰,删"
+    },
+    {
+      "id": "fill-zongzhi",
+      "cat": "filler",
+      "level": "core",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "总之[,,。!]",
+      "hint": "议论文残留,删",
+      "ex": {
+        "hit": [
+          "总之,这事没成",
+          "总之,他赢了"
+        ],
+        "miss": [
+          "总而言之",
+          "为总之"
+        ]
+      }
+    },
+    {
+      "id": "fill-bijing",
+      "cat": "filler",
+      "level": "core",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "(毕竟|总的来说)[,,。]",
+      "hint": "同上",
+      "ex": {
+        "hit": [
+          "毕竟,他年纪大了",
+          "总的来说,还行"
+        ],
+        "miss": [
+          "毕竟他年纪大了这个说法",
+          "总的来说说"
+        ]
+      }
+    },
+    {
+      "id": "fill-youkc",
+      "cat": "filler",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "由此可见",
+      "hint": "删,让事件自己得出结论"
+    },
+    {
+      "id": "fill-blcr",
+      "cat": "filler",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "不难看出",
+      "hint": "同上"
+    },
+    {
+      "id": "fill-zhude",
+      "cat": "filler",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "值得注意的是",
+      "hint": "同上"
+    },
+    {
+      "id": "fill-wuhy",
+      "cat": "filler",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "毫无疑问",
+      "hint": "删后读一遍"
+    },
+    {
+      "id": "fill-yejs",
+      "cat": "filler",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "也就是说",
+      "hint": "复述信号,密度观察"
+    },
+    {
+      "id": "fill-xianran",
+      "cat": "filler",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "显然",
+      "hint": "密度观察"
+    },
+    {
+      "id": "end-wumian",
+      "cat": "end",
+      "level": "core",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "(?:这一夜|这一晚)[^。]{0,6}(?:无眠|注定)",
+      "hint": "章末三禁;切下一场的第一个动作",
+      "ex": {
+        "hit": [
+          "这一夜注定无眠",
+          "这一晚,他无眠了"
+        ],
+        "miss": [
+          "这一夜他睡得很沉",
+          "这一晚下了大雨"
+        ]
+      }
+    },
+    {
+      "id": "end-chilun",
+      "cat": "end",
+      "level": "core",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "命运的齿轮",
+      "hint": "删,用下一章开头接住"
+    },
+    {
+      "id": "end-gaibian",
+      "cat": "end",
+      "level": "core",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "一切(?:都|终将)?将?改变",
+      "hint": "总结句收尾,删",
+      "ex": {
+        "hit": [
+          "一切都将改变",
+          "一切都将被改写"
+        ],
+        "miss": [
+          "一切都会好的",
+          "改变从明天开始"
+        ]
+      }
+    },
+    {
+      "id": "end-zhengkai",
+      "cat": "end",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "[^。]{0,12}才真正开始",
+      "hint": "廉价悬念,删",
+      "ex": {
+        "hit": [
+          "这一切才真正开始",
+          "复仇才真正开始"
+        ],
+        "miss": [
+          "游戏开始了",
+          "真正的战斗已经结束"
+        ]
+      }
+    },
+    {
+      "id": "end-xinpian",
+      "cat": "end",
+      "level": "wide",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "新的篇章",
+      "hint": "升华腔,密度观察"
+    },
+    {
+      "id": "trans-owotian",
+      "cat": "trans",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "哦[，,]?我的天",
+      "hint": "翻译腔惊叹,写本土反应",
+      "ex": {
+        "hit": [
+          "哦,我的天",
+          "哦我的天,这不可能"
+        ],
+        "miss": [
+          "哦,你来了",
+          "天快亮了"
+        ]
+      }
+    },
+    {
+      "id": "trans-gaisi",
+      "cat": "trans",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "该死的",
+      "hint": "密度观察(角色语癖除外,记 voice.md)"
+    },
+    {
+      "id": "trans-kan在",
+      "cat": "trans",
+      "level": "wide",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "看在[^。]{1,12}的份上",
+      "hint": "英文句法直译残留",
+      "ex": {
+        "hit": [
+          "看在老交情的份上",
+          "看在我爹的份上"
+        ],
+        "miss": [
+          "在场的人很多",
+          "看到那份文件"
+        ]
+      }
+    },
+    {
+      "id": "poub-buzhdao",
+      "cat": "pov",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "他不知道的是",
+      "hint": "叙述越权=烧悬念,每卷至多 1 次(style-guide 4)"
+    },
+    {
+      "id": "pov-shubuzhi",
+      "cat": "pov",
+      "level": "standard",
+      "mode": "ban",
+      "kind": "word",
+      "pat": "殊不知",
+      "hint": "同上"
+    },
+    {
+      "id": "pov-quebu",
+      "cat": "pov",
+      "level": "standard",
+      "mode": "watch",
+      "kind": "word",
+      "pat": "却不知",
+      "hint": "同上"
+    },
+    {
+      "id": "pov-meiyouren",
+      "cat": "pov",
+      "level": "wide",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "没有人知道[^。]{0,20}(?:即将|将会|此后的)",
+      "hint": "全知预告腔,删",
+      "ex": {
+        "hit": [
+          "没有人知道,这场雨即将淹没全城",
+          "没有人知道他将做出怎样的选择"
+        ],
+        "miss": [
+          "没有人知道他去了哪里",
+          "没有人知道这件事"
+        ]
+      }
+    },
+    {
+      "id": "mech-halfwidth",
+      "cat": "mech",
+      "level": "core",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "(?<=[一-鿿])[,.!?;:](?=[一-鿿])",
+      "hint": "汉字之间半角标点;rules_guide fix 可自动全角化",
+      "ex": {
+        "hit": [
+          "他走了,很快",
+          "好吗?没有"
+        ],
+        "miss": [
+          "他走了，很快",
+          "好。不错"
+        ]
+      },
+      "fix": {
+        "handler": "halfwidth_punct"
+      }
+    },
+    {
+      "id": "mech-repeat",
+      "cat": "mech",
+      "level": "core",
+      "mode": "ban",
+      "kind": "regex",
+      "pat": "!{2,}|？{2,}|！{2,}|。{2,}|，{2,}|、{2,}|；{2,}|\\?{2,}|\\.{2,}",
+      "hint": "重复标点(！！/。。)自动收敛为一个",
+      "ex": {
+        "hit": [
+          "太好了！！",
+          "等等。。。"
+        ],
+        "miss": [
+          "太好了！",
+          "走吧。"
+        ]
+      },
+      "fix": {
+        "ops": [
+          {
+            "regex": "!{2,}",
+            "repl": "！"
+          },
+          {
+            "regex": "！{2,}",
+            "repl": "！"
+          },
+          {
+            "regex": "。{2,}",
+            "repl": "。"
+          },
+          {
+            "regex": "，{2,}",
+            "repl": "，"
+          },
+          {
+            "regex": "、{2,}",
+            "repl": "、"
+          },
+          {
+            "regex": "；{2,}",
+            "repl": "；"
+          },
+          {
+            "regex": "\\?{2,}",
+            "repl": "？"
+          }
+        ]
+      }
+    }
   ]
 }

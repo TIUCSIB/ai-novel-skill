@@ -224,8 +224,83 @@ def main() -> int:
     if ap_prev.exists():
         issues = load_json(ap_prev).get("issues_next") or []
         if issues:
-            add("P0 遗留问题", "\n## P0 上一章遗留问题(本章必须处理或明确推迟)\n"
+            add("P0 遗留问题", "\n## P0 遗留问题(本章必须处理或明确推迟)\n"
                 + "\n".join(f"- {i}" for i in issues))
+
+    # --- 相关旧章四维推荐(借鉴 ainovel-cli buildRelatedChapters) ---
+    # 维度:①本章计划伏笔的埋设章 ②久未出场但被计划/因果线牵动的角色 ③关键道具锚章
+    #       ④开了线没接的 sets_up 出处章。排除最近 8 章(近章已有摘要/结尾),总闸 ≤6 条,每条带理由。
+    # ①-④ 推荐逻辑用的计划文本此处先读(后面 P1 角色卡还要用同一份)
+    plan_text = read_text(plan_file)
+    plan_chars_all = parse_plan_characters(plan_text)
+    related: list[list] = []  # [章号, 理由(可多锚点合并)]
+
+    def rel_add(ch: int, reason: str):
+        if ch and ch < n - 8 and analysis_path(project, ch).exists():
+            exist = next((x for x in related if x[0] == ch), None)
+            if exist:
+                exist[1] += f";{reason}"  # 同章多锚点合并理由,不重复列行
+            else:
+                related.append([ch, reason])
+
+    # ① 伏笔锚:本章计划要操作(plant/advance/payoff)的伏笔 → 其 plant 章
+    plan_txt = plan_text
+    for f in fo_data.get("foreshadows", []):
+        if f["id"] in plan_txt or f.get("title", "@@") in plan_txt:
+            pc = f.get("planted_chapter") or f.get("planned_chapter")
+            if pc:
+                rel_add(pc, f"伏笔 {f['id']}《{f['title']}》埋设章 —— 回收/推进前须重读原文,保持细节一致")
+    # ② 角色锚:计划出场但 ≥12 章没露面的角色 → 其 last_chapter
+    for nm in plan_chars_all:
+        c = find_character(ledger, nm)
+        if c and c.get("last_chapter") and n - c["last_chapter"] >= 12:
+            rel_add(c["last_chapter"], f"「{nm}」已 {n - c['last_chapter']} 章未出场 —— 上次状态/语气需回带")
+    # ③ 道具锚:台账里角色持有物的词条(≥2字),若出现在本章计划 → 其最近事件章
+    items: set[str] = set()
+    for c in ledger.get("characters", []):
+        for it in (c.get("state") or {}).get("possessions") or []:
+            if isinstance(it, str) and len(it) >= 2:
+                items.add(it)
+    tl_all: list[dict] = []
+    tl_path = project / "ledger" / "timeline.jsonl"
+    if tl_path.exists():
+        for line in read_text(tl_path).splitlines():
+            if line.strip():
+                try:
+                    tl_all.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+    plan_items = [i for i in items if i in plan_txt]
+    for it in plan_items[:4]:
+        last_ev = max((e.get("chapter", 0) for e in tl_all if it in e.get("event", "")
+                       and e.get("chapter", 0) < n - 8), default=None)
+        if last_ev:
+            rel_add(last_ev, f"道具「{it}」最近事件章 —— 流转与状态别写拧")
+    # ④ 静默因果线:sets_up 开出后 10+ 章无 depends_on 承接 → 出处章
+    open_lines: dict[int, list[str]] = {}
+    for k in range(1, n):
+        ap = analysis_path(project, k)
+        if not ap.exists():
+            continue
+        ak = load_json(ap)
+        for s in ak.get("sets_up") or []:
+            open_lines.setdefault(k, []).append(s)
+        for dep in ak.get("depends_on") or []:
+            # 承接:把同前缀(-> 前文本一致)的开线视为已接
+            core = dep.split("->")[0].split(":")[0].strip()
+            for oc in list(open_lines):
+                open_lines[oc] = [x for x in open_lines[oc] if not x.startswith(core[:12])]
+                if not open_lines[oc]:
+                    del open_lines[oc]
+    for k, lines in sorted(open_lines.items()):
+        if n - k >= 12:
+            rel_add(k, f"第{k}章开的因果线已 {n - k} 章未承接:" + "、".join(x[:30] for x in lines[:2]))
+    if related:
+        related.sort(key=lambda x: -x[0])
+        rel_lines = ["## P1 相关旧章(四维推荐;凭摘要写作,只列真正牵得动的;需要全文再读 chapters/)",
+                     "> 规则:排除最近 8 章,最多 6 条,每条带理由。"]
+        rel_lines += [f"- 第{ch}章 —— {reason}" for ch, reason in related[:6]]
+        add("P1 相关旧章推荐", "\n" + "\n".join(rel_lines))
 
     setups = []
     for k in range(max(1, n - 3), n):
@@ -237,8 +312,7 @@ def main() -> int:
         add("P0 待承接因果线", "\n## P0 待承接因果线(近 3 章开启、尚未闭环;本章应承接或明确推迟)\n"
             + "\n".join(setups))
 
-    plan_text = read_text(plan_file)
-    names = parse_plan_characters(plan_text)
+    names = parse_plan_characters(plan_text)  # plan_text 前段已读过
     id2name = {c.get("id"): c.get("name") for c in ledger.get("characters", [])}
     chars = []
     if names:

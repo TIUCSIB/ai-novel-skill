@@ -358,6 +358,113 @@ class Regression(unittest.TestCase):
         self.assertIn("反查", p2.stdout)
         self._write("ledger/world_rules.json", json.dumps({"rules": []}, ensure_ascii=False))
 
+    # ---------- t17: 安全自动修复 fix(dry-run 保护 / --write 只动标点) ----------
+    def test_t17_rules_fix(self):
+        dirty = "# 第17章 脏标点\n\n他走了,很快。太好了！！等等。。。好吗?没有。\n\n她回头看了他一眼,没说话。\n"
+        self._write("chapters/017.md", dirty)
+        p = run("rules_guide.py", "fix", self.proj, "--chapter", "17")  # dry-run
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("dry-run", p.stdout)
+        self.assertIn("mech-halfwidth", p.stdout)
+        self.assertEqual(self._read("chapters/017.md"), dirty, "dry-run 不得写文件")
+        p2 = run("rules_guide.py", "fix", self.proj, "--chapter", "17", "--write")
+        self.assertEqual(p2.returncode, 0, p2.stderr)
+        after = self._read("chapters/017.md")
+        import re as _re
+        sig = lambda s: "".join(_re.findall(r"[\u4e00-\u9fff A-Za-z0-9]", s))
+        self.assertEqual(sig(after), sig(dirty), "fix 只许动标点,正文指纹必须不变")
+        self.assertNotIn(",他", after)
+        self.assertNotIn("！！", after)
+        self.assertNotIn("。。。", after)
+        (self.proj / "chapters/017.md").unlink()
+
+    # ---------- t18: 润色护栏 validate_edit(防改稿=删稿) ----------
+    def test_t18_validate_edit(self):
+        full = "# 第18章 长章\n\n" + ("这段情节正常推进,人物有对话。\n\n"
+                                      "“明天查炉。”老周说。“我知道。”沈砚答。\n\n" * 8 + "收尾动作。\n") \
+            * 1
+        # 撑到 2100+ 字(与 CH1 同量级),用可过 apply 的 analysis
+        body = "这段情节正常推进。" * 60 + "\n\n“明天查炉。”老周说。" * 8
+        self._write("chapters/018.md", "# 第18章 护栏\n\n" + body + "\n")
+        self._write("outline/chapter-018.md", "# 第18章 护栏\n出场角色: 主角\n")
+        a = json.loads(json.dumps(CH1_ANALYSIS))
+        a["chapter"] = 18
+        self._write("analysis/018.json", json.dumps(a, ensure_ascii=False))
+        p0 = run("apply_analysis.py", self.proj, 18)
+        self.assertEqual(p0.returncode, 0, p0.stdout + p0.stderr)
+        # 正常状态应 PASS
+        p1 = run("validate_edit.py", self.proj, 18)
+        self.assertEqual(p1.returncode, 0, p1.stdout + p1.stderr)
+        # 截半 → 字数骤降 FAIL
+        half = "# 第18章 护栏\n\n" + body[: len(body) // 3] + "\n"
+        self._write("chapters/018.md", half)
+        p2 = run("validate_edit.py", self.proj, 18)
+        self.assertEqual(p2.returncode, 1, "字数缩水>40%必须拦截")
+        self.assertIn("骤降", p2.stdout)
+        (self.proj / "chapters/018.md").unlink()
+        (self.proj / "analysis/018.json").unlink()
+        (self.proj / "outline/chapter-018.md").unlink()
+
+    # ---------- t19: 伏笔稳定指纹 fp(planned 无 fp 也能按指纹回种;重复账检出) ----------
+    def test_t19_foreshadow_fp(self):
+        fj = self.proj / "ledger/foreshadowing.json"
+        data = json.loads(self._read("ledger/foreshadowing.json"))
+        # 手登记一条 planned:标题带标点、无 fp(模拟旧体系/手登)
+        data["foreshadows"].append({"id": "F-010", "title": "旧铜哨,的来历", "description": "哨子来路不明",
+                                    "status": "planned", "planned_chapter": 19, "planted_chapter": None,
+                                    "deadline_chapter": 30, "payoff_plan": "第25章", "beats": [], "last_touched": 1})
+        fj.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        # plant 标题不带标点 → 靠归一化指纹回种,不得新建
+        a = json.loads(json.dumps(CH1_ANALYSIS))
+        a["chapter"] = 19
+        a["foreshadow_ops"] = [{"action": "plant",
+                                "new": {"title": "旧铜哨的来历", "description": "x",
+                                        "deadline_chapter": 30, "payoff_plan": "y"}}]
+        body = "他吹了一下旧铜哨,声音哑。" * 220
+        self._write("chapters/019.md", "# 第19章 哨\n\n" + body + "\n")
+        self._write("outline/chapter-019.md", "# 第19章 哨\n出场角色: 主角\n")
+        self._write("analysis/019.json", json.dumps(a, ensure_ascii=False))
+        p = run("apply_analysis.py", self.proj, 19)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        after = json.loads(self._read("ledger/foreshadowing.json"))["foreshadows"]
+        self.assertEqual(len(after), len(data["foreshadows"]), "标点差异不得导致重复建账")
+        f10 = next(x for x in after if x["id"] == "F-010")
+        self.assertEqual(f10["status"], "planted")
+        self.assertTrue(f10.get("fp"), "回种后应补写稳定指纹")
+        # 人为造重复账:复制同标题条目
+        dup = json.loads(json.dumps(f10)); dup["id"] = "F-099"; dup["status"] = "planned"; dup["beats"] = []
+        after.append(dup)
+        fj.write_text(json.dumps({"foreshadows": after}, ensure_ascii=False, indent=2), encoding="utf-8")
+        p2 = run("check_ledger.py", self.proj, "--chapter", "19")
+        self.assertIn("伏笔重复账", p2.stdout, "同 fp 多条必须报 ERROR")
+        # 清理:删掉 F-010/F-099 与第19章,恢复夹具现场
+        fj.write_text(json.dumps({"foreshadows": [x for x in after if x["id"] not in ("F-010", "F-099")]},
+                                 ensure_ascii=False, indent=2), encoding="utf-8")
+        for rel in ("chapters/019.md", "analysis/019.json", "outline/chapter-019.md"):
+            (self.proj / rel).unlink()
+
+    # ---------- t20: context_pack 四维相关旧章推荐 ----------
+    def test_t20_related_chapters(self):
+        # 往台账塞一个失踪角色与静默因果(夹具模拟历史,非工作流手改)
+        cj = self.proj / "ledger/characters.json"
+        d = json.loads(self._read("ledger/characters.json"))
+        d["characters"].append({"id": "C-090", "name": "旧友", "aliases": [], "role": "minor",
+                                "bio": "t20 夹具", "voice": "", "state": {"location": "镇上"},
+                                "relationships": [], "first_chapter": 1, "last_chapter": 1})
+        cj.write_text(json.dumps(d, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        # 第1章 analysis 的 sets_up 已存在(CH1_ANALYSIS)且后续无人 depends_on 承接 → 静默线
+        plan = "# 第14章 计划\n出场角色: 旧友\n伏笔操作:推进 道具来历\n"
+        self._write("outline/chapter-014.md", plan)
+        p = run("context_pack.py", self.proj, 14)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("P1 相关旧章", p.stdout)
+        self.assertIn("埋设章", p.stdout, "伏笔锚:计划提到 F-001 标题 → 推荐其埋设章")
+        self.assertIn("未出场", p.stdout, "角色锚:旧友 13 章未露面")
+        self.assertIn("未承接", p.stdout, "因果锚:第1章 sets_up 静默 13 章")
+        (self.proj / "outline/chapter-014.md").unlink()
+        cj.write_text(json.dumps({"characters": [c for c in d["characters"] if c["id"] != "C-090"]},
+                                 ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
     # ---------- t16: 规则分级校准(calibrate) + 小语料护栏 ----------
     def test_t16_calibrate(self):
         # calibrate 需要 ≥3 章正文;自造 4 章(其中让某个 watch 词广覆盖以走判定分支)

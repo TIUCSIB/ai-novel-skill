@@ -13,7 +13,7 @@ import json
 import sys
 from pathlib import Path
 
-from _common import (analysis_path, ch_path, ch_file, count_words,
+from _common import (analysis_path, ch_path, ch_file, count_words, foreshadow_fp,
                      force_utf8_stdio, load_json, next_id, save_json, today)
 
 
@@ -145,10 +145,18 @@ def main() -> int:
             new = op.get("new") or {}
             title = (new.get("title") or "").strip()
             if entry is None and title:
-                # 无 id 的 plant:先按标题匹配 planned 伏笔(--replace 重种场景),再放宽到任意状态同名
-                entry = next((f for f in fofs if f.get("status") == "planned"
-                              and (f.get("title") or "").strip() == title), None) \
+                # 无 id 的 plant:①按稳定指纹匹配 planned(容忍标点/空白差异;旧 planned 无 fp 则现算)
+                # ②按标题精确匹配 planned(--replace 重种)③放宽到任意状态同名
+                fp = foreshadow_fp(title)
+                def _fp_match(f):
+                    return f.get("status") == "planned" and (
+                        f.get("fp") == fp or foreshadow_fp(f.get("title", "")) == fp)
+                entry = next((f for f in fofs if _fp_match(f)), None) \
+                    or next((f for f in fofs if f.get("status") == "planned"
+                             and (f.get("title") or "").strip() == title), None) \
                     or next((f for f in fofs if (f.get("title") or "").strip() == title), None)
+                if entry is not None and not entry.get("fp"):
+                    entry["fp"] = foreshadow_fp(entry.get("title", title))  # 旧账自动补指纹
             if entry is None and not title:
                 errors.append(f"plant 缺 new.title(新伏笔)且 id={op.get('id')} 不存在")
                 continue
@@ -265,6 +273,7 @@ def main() -> int:
             entry = {
                 "id": op.get("id") or next_id(fofs, "F"),
                 "title": new.get("title", ""),
+                "fp": foreshadow_fp(new.get("title", "")),
                 "description": new.get("description", ""),
                 "status": "planned",
                 "planned_chapter": n,

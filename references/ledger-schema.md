@@ -85,6 +85,7 @@
     {
       "id": "F-001",
       "title": "玉佩遇血则热",
+      "fp": "bd1074e374",
       "description": "第一章玉佩在林昭划伤手时发烫,暗示与血祭之法相关",
       "status": "planted",
       "planned_chapter": 1,
@@ -103,6 +104,7 @@
 | 字段 | 说明 |
 |---|---|
 | `status` | 状态机:`planned`(计划埋)→ `planted`(已埋)→ `advanced`(已推进/受挫)→ `resolved`(已回收)/ `abandoned`(已弃) |
+| `fp` | 稳定指纹:标题归一化(去标点空白)后的短 hash,apply_analysis 自动维护。plant 无 id 时优先按它回种 planned 条目(标题差标点/空白也能对上);`check_ledger` 用它抓"同一伏笔记两条账"。手登记可不填,回写时自动补 |
 | `deadline_chapter` | 最迟回收章号;无硬期限可填 `null`,但长期伏笔尽量给 |
 | `beats[].action` | `plant` / `advance` / `setback`(受挫但不消除) / `payoff` / `abandon` |
 | `payoff_plan` | 回收方式草案,允许后续修订 |

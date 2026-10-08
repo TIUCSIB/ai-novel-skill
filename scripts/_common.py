@@ -242,5 +242,18 @@ def next_id(existing: list[dict], prefix: str) -> str:
     return f"{prefix}-{(max(nums) if nums else 0) + 1:03d}"
 
 
+def foreshadow_fp(title: str) -> str:
+    """伏笔稳定指纹:标题归一化(去空白/标点/全角,大小写折叠)后取 sha1 前 10。
+
+    用途①plant 无 id 时先按 fp 匹配 planned 条目 —— 标题只差标点/空白也能对上
+    (精确标题匹配做不到这点;真改了字仍走标题精确匹配兜底);
+    用途②check_ledger 抓"同一伏笔记了两条账"(fp 相同 = 同一伏笔,--replace 匹配失败的产物)。
+    描述不入指纹 —— 描述常润色,标题相对稳。
+    """
+    import hashlib
+    norm = re.sub(r"[\s，,。.、；;：:!！?？\"'“”‘’()（）【】\[\]-]+", "", (title or "").strip().lower())
+    return hashlib.sha1(norm.encode("utf-8")).hexdigest()[:10] if norm else ""
+
+
 def err(msg: str) -> None:
     print(f"ERROR: {msg}", file=sys.stderr)
