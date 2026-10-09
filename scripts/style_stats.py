@@ -67,6 +67,13 @@ SENSES = {
 }
 NONVISUAL_MIN = 1.0    # 非视觉感官密度下限,次/千字
 
+# ---- 叙述层黑话/书面词(folk-speech 词汇上限:叙述不得越过视角角色的眼睛) ----
+# 只扫剥离对白后的叙述文本 —— 专业词在"懂它的人"嘴里合法,从叙述层冒出来才是作者越权
+NARR_BUZZ = re.compile(
+    r"赔付|机制|优化|绩效|指标|闭环|赋能|抓手|系统性|结构性|标准化|规范化|"
+    r"底层逻辑|颗粒度|结构性|流程化|体系化|维度|层逻辑|整体而言|综合来看")
+BUZZ_LIMIT = 1.0   # 次/千字:真人在叙述里几乎不用,超 1 次/千字即逐条问"这个角色说得出吗"
+
 # ---- 章法同构:跨章检测"每章都从清晨起手、都以对话收尾"的模板感 ----
 OPEN_TIME = re.compile(
     r"^(?:清晨|早晨|一大早|天刚|天还没|天亮|夜里|夜色|入夜|傍晚|黄昏|日头|晌午|午后|正午|"
@@ -97,9 +104,14 @@ def top_shared(a: Counter, b: Counter, k: int = 3) -> list[str]:
     return out if out else list(dict.fromkeys(grams))[:k]
 
 
+def narration_text(text: str) -> str:
+    """剥离对白与标题后的纯叙述文本(词汇上限检查用)。"""
+    return TITLE_LINE.sub("", DIALOG_SEG.sub("", text))
+
+
 def narration_metrics(text: str) -> dict | None:
     """叙述句(剥离对白与标题行)的句长节奏。AI 均匀,真人长短交错。"""
-    narr = TITLE_LINE.sub("", DIALOG_SEG.sub("", text))
+    narr = narration_text(text)
     sents = [s.strip() for s in SENT_SPLIT.split(narr) if len(s.strip()) >= 2]
     if not sents:
         return None
@@ -225,6 +237,8 @@ def chapter_metrics(text: str) -> dict:
         "halfwidth": HALFWIDTH_CJK.findall(text),
         "sense": {k: len(rx.findall(text)) for k, rx in SENSES.items()},
         "dup_within": dup_within_sentences(text),
+        # 叙述层黑话密度(词汇上限:剥离对白后统计)
+        "buzz": NARR_BUZZ.findall(narration_text(text)),
         # 人味配额代标(可数的两项:对话失败/受挫代价;另报沉默)
         "quota": quota_proxies(text),
     }
@@ -360,6 +374,18 @@ def report_chapter(n: int, text: str, prevs: dict[int, str], window: int,
     # --- 章内逐字重复句:复读自己 ---
     for s, c in m["dup_within"][:2]:
         warns.append(f"章内逐字重复句 ×{c}:「{s[:20]}」—— 复读自己,换写法或删")
+
+    # --- 叙述层黑话(词汇上限):叙述越过视角角色的眼睛 ---
+    buzz = m["buzz"]
+    bd = len(buzz) / wcs * 1000
+    if buzz:
+        uniq = "、".join(sorted(set(buzz)))
+        if bd > BUZZ_LIMIT:
+            warns.append(f"叙述层黑话 {bd:.1f}/千字(>{BUZZ_LIMIT:g}):{uniq} —— "
+                         f"这些词从叙述冒出来=作者越权;问『这个角色说得出吗』,换他的词"
+                         f"(专业词只该在懂它的人嘴里;机构黑话严禁入正文)")
+        else:
+            oks.append(f"叙述层黑话 {uniq}({bd:.1f}/千字,低频可留)")
 
     # --- 人味配额代标(可数的两项;全零才提示,交盲审重点核验,不硬扣分) ---
     q = m["quota"]

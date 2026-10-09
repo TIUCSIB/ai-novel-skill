@@ -556,6 +556,22 @@ class Regression(unittest.TestCase):
                       "召回块应指向命中章")
         (self.proj / "outline/chapter-015.md").unlink()
 
+    # ---------- t24: 叙述层黑话检测(词汇上限;专业词在对白里合法) ----------
+    def test_t24_narration_buzz(self):
+        # 叙述堆机构黑话 → 告警;"赔付"只在引号内,剥离对白后不该被计入
+        dirty = ("# 第24章 黑话\n\n"
+                 "从机制层面看,这个闭环要优化颗粒度,底层逻辑靠赋能形成结构性维度。\n"
+                 "他重复了一遍:闭环、赋能、结构性。\n\n"
+                 "“赔付条款写得很清楚。”他说。\n")
+        self._write("chapters/024.md", dirty)
+        p = run("style_stats.py", self.proj, "--chapter", "24")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("叙述层黑话", p.stdout)
+        self.assertIn("机制", p.stdout)
+        self.assertIn("这个角色说得出吗", p.stdout)
+        self.assertNotIn("赔付", p.stdout, "对白里的专业词剥离后不得进叙述黑话告警(对白合法)")
+        (self.proj / "chapters/024.md").unlink()
+
     # ---------- t16: 规则分级校准(calibrate) + 小语料护栏 ----------
     def test_t16_calibrate(self):
         # calibrate 需要 ≥3 章正文;自造 4 章(其中让某个 watch 词广覆盖以走判定分支)
