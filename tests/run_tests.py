@@ -576,6 +576,30 @@ class Regression(unittest.TestCase):
         self.assertNotIn("赔付", p.stdout, "对白里的专业词剥离后不得进叙述黑话告警(对白合法)")
         (self.proj / "chapters/024.md").unlink()
 
+    # ---------- t25: 术语腔检测(科技术语密度+机制复述;脑内合法线放得宽) ----------
+    def test_t25_sci_tone(self):
+        specimen = ("# 第25章 术语腔\n\n冷。极度的冷。\n\n"
+                    "那是体表毛细血管过度收缩、四肢末梢血液几乎停滞的冰冷。\n\n"
+                    "脑颅深处像塞了一块烧红的焦炭，钝重的高热压迫着视神经。\n\n"
+                    "从泥缝中灌入的阴风，是一团由低温氮氧分子组成的高密度湍流。\n\n"
+                    "暗红色的毛细管道在胸腔内纤毫毕现，红细胞挤过管壁，下丘脑释放紊乱电脉冲。\n" * 12)
+        self._write("chapters/025.md", specimen)
+        p = run("style_stats.py", self.proj, "--chapter", "25")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("科技术语密度", p.stdout, "术语均匀铺应报警")
+        self.assertIn("机制复述", p.stdout, "先给感受再解剖一遍应报警")
+        (self.proj / "chapters/025.md").unlink()
+        # 对照:低密度单处术语不报(脑内方言合法,只拦均匀炫耀)
+        clean = ("# 第25章 干净\n\n" + "他呵出一口白气。铁棍拖过冻土，声音很均匀。\n\n"
+                 "“炉温不对。”他说，“分子跑得比记下来的快。”\n" * 40)
+        self._write("chapters/025.md", clean)
+        p2 = run("style_stats.py", self.proj, "--chapter", "25")
+        self.assertEqual(p2.returncode, 0, p2.stderr)
+        warn_sci = [l for l in p2.stdout.splitlines() if "科技术语密度" in l]
+        self.assertFalse(warn_sci, f"低密度术语不应触发告警:{warn_sci}")
+        self.assertNotIn("机制复述", p2.stdout)
+        (self.proj / "chapters/025.md").unlink()
+
     # ---------- t16: 规则分级校准(calibrate) + 小语料护栏 ----------
     def test_t16_calibrate(self):
         # calibrate 需要 ≥3 章正文;自造 4 章(其中让某个 watch 词广覆盖以走判定分支)
