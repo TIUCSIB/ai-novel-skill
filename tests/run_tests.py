@@ -83,6 +83,10 @@ class Regression(unittest.TestCase):
                     "ledger/timeline.jsonl", "premise.md", "style/voice.md"):
             self.assertTrue((self.proj / rel).exists(), f"缺 {rel}")
         self.assertTrue((self.proj / ".git").exists(), "init 应自动 git init")
+        v = self._read("style/voice.md")
+        self.assertIn("语言落地", v, "模板必须自带语言落地小节(通用能力,不能靠手填)")
+        self.assertIn("词汇上限", v)
+        self.assertIn("方言基准区", v)
 
     # ---------- t02: apply 合法路径 + 快照(用例 3 的正样本) ----------
     def test_t02_apply_valid_and_snapshot(self):
