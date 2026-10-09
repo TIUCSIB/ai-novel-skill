@@ -200,7 +200,7 @@ def main() -> int:
                 "id": next_id(chars, "C"),
                 "name": cu["name"].strip(),
                 "aliases": [],
-                "role": "minor",
+                "role": cu.get("role", "minor"),
                 "bio": cu.get("note", ""),
                 "voice": "",
                 "state": dict(cu.get("updates") or {}),
@@ -214,6 +214,8 @@ def main() -> int:
             updates = cu.get("updates") or {}
             c.setdefault("state", {}).update(updates)
             c["last_chapter"] = max(c.get("last_chapter") or 0, n)
+            if cu.get("role") and c.get("role") != cu["role"]:
+                c["role"] = cu["role"]  # 静态层级修正(如立项主角首章入账时被判 minor)
         note = cu.get("note")
         if note:
             tl_lines.append({"chapter": n, "entity": c["id"], "type": "status", "event": note})
@@ -286,6 +288,8 @@ def main() -> int:
             fofs.append(entry)
             applied.append(f"新伏笔登记:{entry['id']} {entry['title']}")
         entry.setdefault("beats", []).append({"chapter": n, "action": act, "note": note})
+        if not entry.get("fp"):
+            entry["fp"] = foreshadow_fp(entry.get("title", ""))  # 手登记旧账统一补指纹
         recompute_foreshadow(entry)
         tl_lines.append({"chapter": n, "entity": entry["id"], "type": "plot",
                          "event": f"伏笔[{entry['title']}] {act}" + (f":{note}" if note else "")})
