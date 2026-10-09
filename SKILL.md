@@ -65,7 +65,7 @@ description: AI 长篇小说创作工作流:以文件台账(角色/伏笔/时间
 3. 填写 `premise.md`(logline / 核心冲突 / 主角 / 卖点 / 基调),**给用户确认**。
 4. 构建 `bible/`:world.md、rules.md、characters.md。rules.md 必须包含力量体系边界与"禁写事项"。**主角团先过角色工作坊**(`references/character-workshop.md`,次要角色 20 问档,主角 80 问档)再落笔。
 5. **有力量/概念体系的题材**(修仙/科幻/魔法/异能等)再加两件套:init 已生成模板 —— `bible/power_matrix.md`(境界/等级阶梯、越级挑战的代价规则、主角当前上限)与 `bible/lexicon.md`(题材概念 → 底层逻辑映射词典,如"灵气→可编程能量场")。这两份是防战力崩坏与保证题材质感一致性的锚。
-6. 更新 `style/voice.md`:根据题材和用户偏好定视角、句风、节奏。**禁用清单不要手抄,从规则库导入**:`python <技能目录>/scripts/rules_guide.py init-voice "<项目目录>"`(默认 standard 档 ban 规则,带 `[id]` 标记,重跑不覆盖手工条目;全书 138 条分级规则见 `references/rules.json`,`validate` 可校验)。**若用户提供了文风样例文本**,先生成仿写画像(`references/style-profile.md` → `style/profile.md`),voice.md 引用它。
+6. 更新 `style/voice.md`:根据题材和用户偏好定视角、句风、节奏。**禁用清单不要手抄,从规则库导入**:`python <技能目录>/scripts/rules_guide.py init-voice "<项目目录>"`(默认 standard 档 ban 规则,带 `[id]` 标记,重跑不覆盖手工条目;全书 159 条分级规则见 `references/rules.json`,`validate` 可校验)。**若用户提供了文风样例文本**,先生成仿写画像(`references/style-profile.md` → `style/profile.md`),voice.md 引用它。
 
 ## 阶段 1:大纲
 
@@ -190,7 +190,7 @@ python <技能目录>/scripts/apply_analysis.py "<项目目录>" N
 - `references/review-rubric.md` — 七维审校细则 + 反通胀校准 + subagent 盲审派发模板。**每章审校时对照。**
 - `references/style-guide.md` — 机械禁则:黑名单、复读分级、字数纪律、开头结尾规则。**自检时对照。**
 - `references/ai-taste.md` — AI 味对比例句库(含**万能转折:副词加速器**专节)+ 密度警戒线 + 黑名单绕行边界 + 修订工序 + 人味配额。**动笔前找感觉、自检改写、盲审 D7 时对照。**
-- `references/rules.md` + `references/rules.json` — 分级规则库(138 条 × 16 类目 × 三档 × ban/watch,regex 带正反例)。**立项导入禁用清单、导出手册、校准分级时读。**
+- `references/rules.md` + `references/rules.json` — 分级规则库(159 条 × 19 类目 × 三档 × ban/watch,regex 带正反例)。**立项导入禁用清单、导出手册、校准分级时读。**
 - `references/hooks.md` — 章首引子七式 + 章末钩子十三式 + 悬念强度五级与波浪配比 + 三段生成法。**写章计划(标钩子型/强度)与弧末分布核验时读。**
 - `references/craft.md` — 创作方法论:章节结构、爽点节奏、钩子库、MRU、对话区分度、伏笔节奏、因果纪律。**计划和动笔时读。**
 - `references/character-workshop.md` — 角色工作坊问题阶梯(配角 20 问 / 主要角色 80 问)。**立项建主角团、major 配角登场前用。**

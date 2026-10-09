@@ -36,7 +36,7 @@
 `style/voice.md` 的 `## 禁用清单` 是唯一黑名单来源,`check_ledger.py` 逐章扫描:
 
 - 默认字面子串匹配;`regex:` 前缀走正则;条目尾部 `[id]` 是规则库标记(解析时自动剥掉,不影响匹配)。
-- **清单主体来自分级规则库** `references/rules.json`(138 条,core/standard/wide 三档 × ban/watch 两类;ban 66 / watch 72 —— watch 是"单个合法、频率成病"的词,如仿佛/宛如/瞬间,进黑名单会误伤):`rules_guide.py init-voice <项目>` 一键导入/重建,手工条目不被覆盖;**只有 ban 类入清单**,watch 由 style_stats 判密度。
+- **清单主体来自分级规则库** `references/rules.json`(159 条,core/standard/wide 三档 × ban/watch 两类;ban 79 / watch 80 —— watch 是"单个合法、频率成病"的词,如仿佛/宛如/瞬间,进黑名单会误伤):`rules_guide.py init-voice <项目>` 一键导入/重建,手工条目不被覆盖;**只有 ban 类入清单**,watch 由 style_stats 判密度。
 - 命中后**改写该句**,不是简单删词 —— 黑名单词往往是句式病的症状(如"一丝"+ 抽象名词 = 套装描写),连同句式一起换。
 - 写作中发现新的 AI 腔套路:先 `rules_guide.py print` 看手册确认没有同族规则 → 加进 voice.md(用户确认)或直接补进 rules.json(跑 `validate`)。
 
