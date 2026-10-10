@@ -437,6 +437,10 @@ def main() -> int:
             state = ("计划第{}章揭示".format(t["reveal_chapter"])
                      if t.get("reveal_chapter") else "未排揭示") if not t.get("revealed") else "已揭示"
             lines.append(f"- 【{t['term']}】首现第{t.get('first_chapter', '?')}章|{state} — 读者应知:{t.get('brief', '')}")
+            if t.get("plain_anchor"):
+                lines.append(f"  通俗锚点:{t['plain_anchor']}(先按此画画面,再考虑是否给名字)")
+            if t.get("reader_complexity") == "advanced":
+                lines.append("  ⚠ 高认知负荷概念:落笔前确认本章 advanced 概念未扎堆(前10章尤严)")
         if hit_terms:
             lines.append(f"- ⚠ 本章计划直接涉及 {len(hit_terms)} 个未揭示术语,写到它们时只许用『读者应知』层表述;"
                          "提前泄 truth 按 D5 红线处理")

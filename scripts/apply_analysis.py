@@ -329,6 +329,8 @@ def main() -> int:
         entry = {"id": next_id(terms + new_terms, "T"), "term": name,
                  "first_chapter": n,
                  "brief": t.get("brief", ""),               # 读者此刻需要知道的最小解释
+                 "plain_anchor": t.get("plain_anchor", ""), # 通俗锚点:一句秒懂的生活画面(见 reader-clarity)
+                 "reader_complexity": t.get("reader_complexity", ""),  # basic/core/advanced(空=未标)
                  "truth": t.get("truth", ""),               # 完整真相(作者视角)
                  "reveal_chapter": t.get("reveal_chapter"), # 计划揭示章(可空)
                  "revealed": False}

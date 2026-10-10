@@ -480,6 +480,8 @@ class Regression(unittest.TestCase):
         a["world_facts"] = []
         a["relationships"] = []
         a["terms"] = [{"term": "源解", "brief": "主角手中的残卷,能拆解万物之理",
+                       "plain_anchor": "像拆机器钟表一样,一眼看出哪个齿轮卡死的小法门",
+                       "reader_complexity": "core",
                        "truth": "上个文明留下的知识引擎,全书终极真相", "reveal_chapter": 60}]
         self._write("analysis/021.json", json.dumps(a, ensure_ascii=False))
         p = run("apply_analysis.py", self.proj, 21)
@@ -488,10 +490,15 @@ class Regression(unittest.TestCase):
         self.assertEqual(len(terms), 1)
         self.assertEqual(terms[0]["first_chapter"], 21)
         self.assertFalse(terms[0]["revealed"])
+        # v3.6 通俗字段必须落账(白名单漏字段=机制只对示范书生效)
+        self.assertIn("一眼看出哪个齿轮卡死", terms[0].get("plain_anchor", ""),
+                      "plain_anchor 不得被 apply_analysis 丢弃")
+        self.assertEqual(terms[0].get("reader_complexity"), "core")
         # 反查
         p2 = run("query_ledger.py", self.proj, "--term", "源解")
         self.assertIn("首现第21章", p2.stdout)
         self.assertIn("计划第60章揭示", p2.stdout)
+        self.assertIn("通俗锚点", p2.stdout, "反查旧术语时要把生活锚点带回眼前")
         # 重复回写不双记
         p3 = run("apply_analysis.py", self.proj, 21, "--replace")
         self.assertEqual(p3.returncode, 0, p3.stdout + p3.stderr)
@@ -524,12 +531,15 @@ class Regression(unittest.TestCase):
         self._write("style/profile.md", "# 文风画像:测试\n短句为主,冷收尾。\n", )
         self._write("outline/chapter-002.md", "# 第2章 计划\n出场角色: 主角\n")
         terms = [{"id": "T-001", "term": "源解", "first_chapter": 1, "brief": "残卷",
+                  "plain_anchor": "像拆钟表一样一眼看出哪个齿轮卡死", "reader_complexity": "advanced",
                   "truth": "知识引擎", "reveal_chapter": 60, "revealed": False}]
         self._write("ledger/terms.json", json.dumps({"terms": terms}, ensure_ascii=False))
         p = run("context_pack.py", self.proj, 2)
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertIn("P1 术语卡", p.stdout)
         self.assertIn("读者应知", p.stdout)
+        self.assertIn("通俗锚点", p.stdout, "术语卡必须把生活锚点摆到动笔眼前(reader-clarity 主用法)")
+        self.assertIn("高认知负荷", p.stdout, "advanced 概念扎堆提示")
         self.assertIn("P2 文风画像", p.stdout)
         self.assertIn("从这里接笔", p.stdout, "结尾必须给上一章原文(正文语态垫底)")
         pack = p.stdout.replace(" ", "").replace("\n", "")

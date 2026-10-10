@@ -507,23 +507,60 @@ def main() -> int:
 
     if args.all:
         print(f"{'章':>4} {'字数':>6} {'比喻/千':>7} {'感叹/千':>7} {'加速/千':>7} {'连接/千':>7} "
-              f"{'堆砌':>4} {'不是而是':>6} {'无对话':>6} {'同头段':>5} {'短句%':>6} {'非视/千':>7}")
+              f"{'堆砌':>4} {'不是而是':>6} {'短句%':>6} {'非视/千':>7} {'黑话/千':>7} {'术语/千':>7}")
+        issues_summary: list[str] = []
         for n in sorted(texts):
             m = chapter_metrics(texts[n])
             sent = m["sent"]
-            nonvis = sum(v for k, v in m["sense"].items() if k != "视觉") / (m["wc"] or 1) * 1000
-            flag = (" ⚠" if m["simile_density"] > SIMILE_LIMIT or m["excl_density"] > EXCL_LIMIT
-                    or m["pacer_density"] > PACER_LIMIT or m["connector_density"] > CONNECTOR_LIMIT
-                    or len(m["piled"]) > PILED_LIMIT or m["notbut"] > NOTBUT_LIMIT
-                    or m["max_gap"] > DIALOG_GAP_LIMIT or m["start_run"]["n"] >= START_RUN_LIMIT
-                    or (sent and sent["n"] >= 20 and (sent["short_ratio"] < SHORT_RATIO_MIN
-                                                       or sent["std"] < STD_MIN))
-                    or nonvis < NONVISUAL_MIN or m["punct_repeat"] or m["halfwidth"] else "")
+            wc = m["wc"] or 1
+            nonvis = sum(v for k, v in m["sense"].items() if k != "视觉") / wc * 1000
+            buzz_d = len(m["buzz"]) / wc * 1000
+            sci_d = len(m["sci"]) / wc * 1000
+            mech_cnt = len(m["mech_expl"])
+
+            reasons: list[str] = []
+            if m["simile_density"] > SIMILE_LIMIT:
+                reasons.append(f"比喻{m['simile_density']:.1f}")
+            if m["excl_density"] > EXCL_LIMIT:
+                reasons.append(f"感叹{m['excl_density']:.1f}")
+            if m["pacer_density"] > PACER_LIMIT:
+                reasons.append(f"加速{m['pacer_density']:.1f}")
+            if m["connector_density"] > CONNECTOR_LIMIT:
+                reasons.append(f"连接{m['connector_density']:.1f}")
+            if len(m["piled"]) > PILED_LIMIT:
+                reasons.append(f"堆砌{len(m['piled'])}")
+            if m["notbut"] > NOTBUT_LIMIT:
+                reasons.append(f"不是而是{m['notbut']}")
+            if m["max_gap"] > DIALOG_GAP_LIMIT:
+                reasons.append(f"无对话{m['max_gap']}字")
+            if m["start_run"]["n"] >= START_RUN_LIMIT:
+                reasons.append(f"同头段{m['start_run']['n']}")
+            if sent and sent["n"] >= 20 and (sent["short_ratio"] < SHORT_RATIO_MIN or sent["std"] < STD_MIN):
+                reasons.append("句长僵硬")
+            if nonvis < NONVISUAL_MIN:
+                reasons.append("非视觉不足")
+            if m["punct_repeat"] or m["halfwidth"]:
+                reasons.append("标点缺陷")
+            if buzz_d > BUZZ_LIMIT:
+                reasons.append(f"叙述黑话{buzz_d:.1f}")
+            if sci_d > SCI_LIMIT:
+                reasons.append(f"术语密度{sci_d:.1f}")
+            if mech_cnt > 0:
+                reasons.append(f"机制复述{mech_cnt}处")
+
+            flag = " ⚠" if reasons else ""
+            if reasons:
+                issues_summary.append(f"第 {n} 章: {', '.join(reasons)}")
+
             sr = f"{sent['short_ratio']:.0%}" if sent else "-"
             print(f"{n:>4} {m['wc']:>6} {m['simile_density']:>7.1f} {m['excl_density']:>7.1f} "
                   f"{m['pacer_density']:>7.1f} {m['connector_density']:>7.1f} "
-                  f"{len(m['piled']):>4} {m['notbut']:>6} {m['max_gap']:>6} {m['start_run']['n']:>5} "
-                  f"{sr:>6} {nonvis:>7.1f}{flag}")
+                  f"{len(m['piled']):>4} {m['notbut']:>6} "
+                  f"{sr:>6} {nonvis:>7.1f} {buzz_d:>7.1f} {sci_d:>7.1f}{flag}")
+        if issues_summary:
+            print("\n告警章节定位汇总:")
+            for issue in issues_summary:
+                print(f"  ⚠ {issue}")
     else:
         if args.chapter:
             n = args.chapter

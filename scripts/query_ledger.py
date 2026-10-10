@@ -207,6 +207,10 @@ def main() -> int:
                 state = "已揭示于第{}章".format(t.get("revealed_chapter")) if t.get("revealed") \
                     else (f"计划第{t['reveal_chapter']}章揭示" if t.get("reveal_chapter") else "未排揭示")
                 head.append(f"【术语】{t['id']} {t['term']} | 首现第{t.get('first_chapter', '?')}章 | {state}")
+                if t.get("plain_anchor"):
+                    head.append(f"  通俗锚点:{t['plain_anchor']}")
+                if t.get("reader_complexity"):
+                    head.append(f"  认知复杂度:{t['reader_complexity']}")
                 head.append(f"  读者应知:{t.get('brief', '')}")
                 head.append(f"  完整真相:{t.get('truth', '')}")
 

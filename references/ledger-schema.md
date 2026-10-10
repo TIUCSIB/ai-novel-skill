@@ -162,7 +162,7 @@
 
 ---
 
-## ledger/terms.json — 术语账(新名词首现管理)
+## ledger/terms.json — 术语账(新名词首现与通俗降维管理)
 
 ```json
 {
@@ -172,6 +172,8 @@
       "term": "源解",
       "first_chapter": 3,
       "brief": "主角手中能拆解万物之理的残卷(读者此刻应知的最小解释)",
+      "plain_anchor": "像拆机器钟表一样，一眼看出哪个齿轮卡死的小法门(生活经验大白话锚点)",
+      "reader_complexity": "core",
       "truth": "上个文明留下的知识引擎(全书终极真相,只在揭示章给)",
       "reveal_chapter": 60,
       "revealed": false
@@ -185,11 +187,13 @@
 | `term` | 术语原文(专名/机制概念/组织职司等"读者需要知道那是什么"的词),全账唯一,重复入账 check_ledger 报 ERROR |
 | `first_chapter` | 首现章(由 apply_analysis 按该词在 analysis.terms 中登记时入账) |
 | `brief` | **读者视角**:到这个阶段读者被允许知道的部分。写正文时的硬约束 —— 对该词的表述不得超出 brief |
+| `plain_anchor` | **通俗锚点(选填)**:用一句普通人秒懂的日常生活画面/体感解释该概念(对照 `references/reader-clarity.md`)，正文动笔时优先以此锚点转化为画面，杜绝教科书腔 |
+| `reader_complexity` | **认知复杂度(选填)**:`basic`(常识/粗浅) / `core`(本书核心机制) / `advanced`(底层深奥原理)；前 10 章严禁同时密集引入多个 advanced 概念 |
 | `truth` | **作者视角**:完整真相。只有揭示章才在正文展开;提前泄 truth 按 D5 红线处理 |
 | `reveal_chapter` | 计划揭示章(可空=未排期);check_ledger 在该章过后仍未标 revealed 会 WARN |
 | `revealed` | 是否已揭示(analysis 用 `revealed_terms: ["词"]` 标记,apply 置 true 并记 revealed_chapter) |
 
-设计区分:**悬念=读者知道自己该问什么,困惑=读者连这个词是什么都不知道**。brief 保证"知道该问什么",reveal_chapter 保证"有东西可等"。`context_pack.py` 会把本章计划涉及的未揭示术语作为「术语卡」列出(含 brief 作为允许信息上限),`query_ledger.py --term` 可反查。
+设计区分:**悬念=读者知道自己该问什么,困惑=读者连这个词是什么都不知道**。brief 保证"知道该问什么",plain_anchor 保证"一听就懂不费脑",reveal_chapter 保证"有东西可等"。`context_pack.py` 会把本章计划涉及的未揭示术语作为「术语卡」列出(含 brief 作为允许信息上限),`query_ledger.py --term` 可反查。
 
 ---
 
