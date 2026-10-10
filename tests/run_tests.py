@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """可执行回归:python tests/run_tests.py(标准库 unittest,无需 pytest)。
 
-覆盖 REGRESSION.md 的脚本类用例(3/4/5/7/9 + 用例 8 局部);
-行为类用例(1 技能触发 / 2 循环顺序 / 6 干预分诊)仍需真实会话手测。
+覆盖 REGRESSION.md 的脚本类用例(3/4/5/7/9 + 用例 8 局部 + 用例 16 的 16.1/16.2 脚本部分);
+行为类用例(1 技能触发 / 2 循环顺序 / 6 干预分诊 / 16.3-16.5 人工项)仍需真实会话手测。
 """
 from __future__ import annotations
 
@@ -610,6 +610,54 @@ class Regression(unittest.TestCase):
         self.assertNotIn("机制复述", p2.stdout)
         (self.proj / "chapters/025.md").unlink()
 
+    # ---------- t28: 正文自然度检测 A/B/F(V1 用例的自动化部分) ----------
+    def test_t28_naturalness_detectors(self):
+        # [测试A] 普通叙述碎句过密:报"碎句堆叠"(带行号与统计)+全章"短句过密"提示;
+        #         措辞必须是"先人工复核"类,不是硬判合并
+        prose = ("# 第50章 文戏\n\n"
+                 + "他走进屋子。门在身后合拢。屋里很静。他忽然不想点灯。" * 6 + "\n")
+        self._write("chapters/050.md", prose)
+        p = run("style_stats.py", self.proj, "--chapter", "50")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("⚠ 普通叙述碎句堆叠", p.stdout, "A: 文戏碎句必须提示")
+        self.assertIn("第 3 行", p.stdout, "A: 必须给段落行号定位")
+        self.assertIn("⚠ 短句占比", p.stdout, "A: 全章反方向(过密)也要提示")
+        self.assertIn("人工复核", p.stdout, "A: 提示交人工,不自动改写")
+        # [测试A-强调] 功能短句连排(动作/判断/总结鼓点,4 句一段):单独提示
+        self._write("chapters/051.md", "# 第51章 鼓点\n\n他攥拳。手在抖。他明白了。一切都完了。\n")
+        p2 = run("style_stats.py", self.proj, "--chapter", "51")
+        self.assertIn("功能短句连排", p2.stdout, "A-强调: 鼓点必须提示")
+        # [测试B] 打斗/追逐/惊恐短句群:不得判文风不合格
+        action = "# 第52章 打斗\n\n" + "刀落。他偏头。瓦裂。他撞上墙。脚下一滑。" * 8 + "\n"
+        self._write("chapters/052.md", action)
+        p3 = run("style_stats.py", self.proj, "--chapter", "52")
+        self.assertNotIn("⚠ 普通叙述碎句堆叠", p3.stdout, "B: 打斗短句群不是碎句病")
+        self.assertNotIn("⚠ 短句占比", p3.stdout, "B: 高短句占比不判过密(动作节奏豁免)")
+        self.assertIn("✓ 动作段短句密集", p3.stdout, "B: 应识别为动作段")
+        self.assertIn("视为打斗", p3.stdout, "B: 全章豁免理由要写明")
+        # 追逐/惊恐(打斗外场景)同样豁免
+        chase = "# 第53章 追逐\n\n" + "他跑。他躲。他窜。他翻墙。他喘。他不敢停。" * 8 + "\n"
+        self._write("chapters/053.md", chase)
+        p4 = run("style_stats.py", self.proj, "--chapter", "53")
+        self.assertNotIn("⚠ 普通叙述碎句堆叠", p4.stdout, "B: 追逐短句群不报碎句病")
+        self.assertNotIn("⚠ 短句占比", p4.stdout)
+        fear = "# 第54章 惊恐\n\n" + "他一惊。手在抖。他屏住气。没人出声。他僵在原地。" * 8 + "\n"
+        self._write("chapters/054.md", fear)
+        p5 = run("style_stats.py", self.proj, "--chapter", "54")
+        self.assertNotIn("⚠ 普通叙述碎句堆叠", p5.stdout, "B: 惊恐短句群不报碎句病")
+        self.assertIn("✓ 紧张段短句密集", p5.stdout, "B: 应识别为紧张段")
+        # [测试F] 自然优质正文(长短混排)不误报;validate_edit 另护删稿(t18)
+        good_body = ("他提着灯走进长巷,湿气顺着衣领爬上来,他在第三户人家的门缝下看见一点亮。"
+                     "灯芯结了花,他挑了挑,火光稳住了。\n\n"
+                     "“来了?”门里有人问。他说,嗯。他推门进去,屋里的人正把最后一摞账本塞进柜子。\n\n"
+                     "他想起那年冬天在渡口等船,江风把人的耳朵割得生疼,他那时还不知道船会晚三天。\n")
+        self._write("chapters/055.md", "# 第55章 好稿\n\n" + good_body * 4)
+        p6 = run("style_stats.py", self.proj, "--chapter", "55")
+        for needle in ("⚠ 普通叙述碎句堆叠", "⚠ 短句占比", "⚠ 功能短句连排"):
+            self.assertNotIn(needle, p6.stdout, f"F: 优质正文不得误报({needle})")
+        for n in range(50, 56):
+            (self.proj / f"chapters/{n:03d}.md").unlink()
+
     # ---------- t16: 规则分级校准(calibrate) + 小语料护栏 ----------
     def test_t16_calibrate(self):
         # calibrate 需要 ≥3 章正文;自造 4 章(其中让某个 watch 词广覆盖以走判定分支)
@@ -635,6 +683,74 @@ class Regression(unittest.TestCase):
         self.assertIn("没有统计意义", p3.stderr)
         (self.proj / "tiny-corpus.txt").unlink()
         for n in made:
+            (self.proj / f"chapters/{n:03d}.md").unlink()
+
+    # ---------- t26: 段落级碎句堆叠检测(普通叙述必报 / 动作段不误伤) ----------
+    def test_t26_short_run_detector(self):
+        # ① 普通叙述碎句堆叠:连续短句成串、无动作词 → 必须报"普通叙述碎句堆叠"并给行号
+        prose = ("# 第26章 碎句\n\n"
+                 + "他走进屋子。门在身后合拢。屋里很静。他忽然不想点灯。" * 2 + "\n\n"
+                 + "他停住。抬手。又放下。指尖在桌上敲了三下。" * 2 + "\n")
+        self._write("chapters/026.md", prose)
+        p = run("style_stats.py", self.proj, "--chapter", "26")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("普通叙述碎句堆叠", p.stdout, "普通叙述的碎句堆叠必须被报出")
+        self.assertIn("第 3", p.stdout, "警告必须带段落行号定位")
+        self.assertIn("人工复核", p.stdout, "提示必须交人工复核,不自动改写")
+        # ② 动作高潮段:短句成串合法 → 只提示"动作段短句密集",不得报碎句病(防误伤)
+        action = "# 第26章 动作\n\n" + "刀落。他偏头。瓦裂。他撞上墙。脚下一滑。" * 6 + "\n"
+        self._write("chapters/026.md", action)
+        p2 = run("style_stats.py", self.proj, "--chapter", "26")
+        self.assertEqual(p2.returncode, 0, p2.stderr)
+        self.assertIn("动作段短句密集", p2.stdout, "动作段应另类提示")
+        self.assertNotIn("普通叙述碎句堆叠", p2.stdout, "动作短句群不得被误判成碎句病")
+        # ③ 长短混排 + 对白 → 不报任何碎句项
+        mixed = ("# 第26章 混合\n\n"
+                 + "他提着灯走进长巷,湿气顺着衣领爬上来,他在第三户人家的门缝下看见一点亮。\n\n"
+                 + "“来了?”门里有人问。他说,嗯。\n") * 6
+        self._write("chapters/026.md", mixed)
+        p3 = run("style_stats.py", self.proj, "--chapter", "26")
+        self.assertEqual(p3.returncode, 0, p3.stderr)
+        self.assertNotIn("碎句堆叠", p3.stdout)
+        # ④ 超短碎句段(≈20 字、6 句)不得因字数下限被漏掉
+        tiny = "# 第26章 短\n\n" + "他停住。抬手。又放下。灯灭了。屋里很静。他站了很久。\n"
+        self._write("chapters/026.md", tiny)
+        p4 = run("style_stats.py", self.proj, "--chapter", "26")
+        self.assertEqual(p4.returncode, 0, p4.stderr)
+        self.assertIn("普通叙述碎句堆叠", p4.stdout, "20 字左右的碎句段不得漏报")
+        (self.proj / "chapters/026.md").unlink()
+
+    # ---------- t27: 人味窗口提示 + 术语卡 advanced 扎堆提示 ----------
+    def test_t27_quota_window_and_concept_flag(self):
+        # ① 近 3 章人味代标双零 → 单章报告追加"人味均摊"提示
+        zero = "他往前走。路很长。天黑了。他坐下来。风把门吹开又合上。" * 12
+        for n in (40, 41, 42):
+            self._write(f"chapters/{n:03d}.md", f"# 第{n}章 冷章\n\n" + zero + "\n")
+        p = run("style_stats.py", self.proj, "--chapter", "42")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("人味均摊", p.stdout, "窗口双零必须提示")
+        self.assertIn("一个没失手", p.stdout)
+        # ② 窗口内出现一次对话失败 → 提示消失(防误报)
+        talk = "# 第43章 对话\n\n" + "“我要说的话——”他说。他往前走。\n" * 40
+        self._write("chapters/043.md", talk)
+        p2 = run("style_stats.py", self.proj, "--chapter", "43")
+        self.assertEqual(p2.returncode, 0, p2.stderr)
+        self.assertNotIn("人味均摊", p2.stdout, "窗口内有对话失败时不得报窗口双零")
+        # ③ 术语卡:3 个 advanced 未揭示概念同时出现在计划 → 追加"概念扎堆"汇总提示
+        terms = [{"id": f"T-{i:03d}", "term": f"术语{i}", "first_chapter": 1, "brief": "浅释",
+                  "truth": "真相", "reader_complexity": "advanced",
+                  "reveal_chapter": 60, "revealed": False} for i in (1, 2, 3)]
+        self._write("ledger/terms.json", json.dumps({"terms": terms}, ensure_ascii=False))
+        self._write("outline/chapter-034.md",
+                    "# 第34章 计划\n出场角色: 主角\n节拍: 术语1 与 术语2 与 术语3 同时登场\n")
+        p3 = run("context_pack.py", self.proj, 34)
+        self.assertEqual(p3.returncode, 0, p3.stderr)
+        self.assertIn("概念扎堆", p3.stdout, "advanced 概念扎堆必须给汇总提示")
+        self.assertIn("同一场景最多拆解 1 处", p3.stdout)
+        # 清理
+        (self.proj / "outline/chapter-034.md").unlink()
+        self._write("ledger/terms.json", json.dumps({"terms": []}, ensure_ascii=False))
+        for n in (40, 41, 42, 43):
             (self.proj / f"chapters/{n:03d}.md").unlink()
 
 

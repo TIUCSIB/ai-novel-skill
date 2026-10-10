@@ -135,7 +135,7 @@ DIALOG_EXPLAIN = re.compile(
 )
 
 # ---------------------------------------------------------------------------
-# 人味配额代标(style_stats 与 taste_audit 共用;四配额里两条可数,两条只能盲审)
+# 人味意图代标(style_stats 与 taste_audit 共用;四类里两条可数,两条只能盲审)
 # 注意:"对话"类信号要拆成分报 —— 引号内以「……」收尾多数只是正常停顿,
 # 以「——」收尾才是真被打断;还要滤掉拟声词("嗡——""沙——沙——"),否则数字会虚高。
 DASH_END = re.compile(r"[“「]([^”」]{3,400})——[”」]")
@@ -157,8 +157,8 @@ def human_lines(pat: "re.Pattern", text: str) -> int:
 
 
 def quota_proxies(text: str) -> dict:
-    """人味四配额的机械代理:对话失败(dash/ellip/interrupt 合并)、主角代价(setback);
-    另给沉默回避作参考。'无用细节'与'未闭合线头'无法机械统计,留给盲审。"""
+    """人味四类的机械代理:对话失败(dash/ellip/interrupt 合并)、主角代价(setback);
+    另给沉默回避作参考。'非情节功能细节'与'未闭合线头'无法机械统计,留给盲审。"""
     dlg_fail = human_lines(DASH_END, text) + len(INTERRUPT.findall(text))
     return {
         "dlg_fail": dlg_fail,

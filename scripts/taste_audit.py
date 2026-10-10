@@ -207,6 +207,20 @@ def main() -> int:
                          for a, b, pos, lab in runs) or "无"
     out(f"- **句长节奏**:句长均匀(σ<{ss.STD_MIN:g} 或短句<{ss.SHORT_RATIO_MIN:.0%}){len(flat)} 章"
         + (f":第 {'、'.join(map(str, sorted(flat)))} 章" if flat else ""))
+    sruns = [n for n, m in per_ch.items()
+             if any(r["action_kind"] == "普通" for r in m.get("short_runs") or [])]
+    out(f"- **碎句堆叠**(普通叙述连续短句成串;段落级提示){len(sruns)} 章"
+        + (f":第 {'、'.join(map(str, sorted(sruns)))} 章 —— 逐章跑 style_stats 看具体段落行号" if sruns else ""))
+    dense = [n for n, m in per_ch.items()
+             if _sent(m) and _sent(m)["short_ratio"] > ss.SHORT_RATIO_MAX
+             and (m.get("tension") or {}).get("density", 0) < ss.TENSION_DENSITY_MIN]
+    out(f"- **短句过密**(叙述短句占比 >{ss.SHORT_RATIO_MAX:.0%} 且动作/紧张密度低){len(dense)} 章"
+        + (f":第 {'、'.join(map(str, sorted(dense)))} 章" if dense else "")
+        + "(打斗/追逐/惊恐章按节奏选择豁免,不计)")
+    emph = [n for n, m in per_ch.items()
+            if any(e["action_kind"] == "普通" for e in m.get("emphasis") or [])]
+    out(f"- **功能短句连排**(动作/感受/判断/总结短句连排=人为强调感){len(emph)} 章"
+        + (f":第 {'、'.join(map(str, sorted(emph)))} 章" if emph else ""))
     out(f"- **感官配比**:全视觉叙事(非视觉<{ss.NONVISUAL_MIN:g}/千){len(blind)} 章"
         + (f":第 {'、'.join(map(str, sorted(blind)))} 章" if blind else ""))
     out(f"- **章法同构**:连续 ≥{ss.FRAME_RUN} 章同型开/收 —— {run_desc}")
@@ -328,9 +342,11 @@ def main() -> int:
         out("⚠ **后两项偏低是结构层 AI 味的直接读数**:真人小说里角色经常说不出话、"
             "经常为决定付出代价。若全书沉默与代价都在每章 0.5 次以下,"
             "说明这个世界的角色从不为难、从不错 —— 比任何词表都更暴露 AI。"
-            "这正是「人味配额」要强制补上的东西(见章计划模板)。")
+            "按章计划「人味意图」与弧细纲「人味分布」核弧级分布(每弧至少各有 1 处"
+            "对话失败/未闭合线头/主角代价,见章计划模板),"
+            "并优先补在正确的章功能上(高潮章补代价、过渡章补废料与线头),不要每章硬凑。")
         out()
-    out("> 另有两项**无法机械统计**,只能由盲审 D7 与章计划「人味配额」核验:"
+    out("> 另有两项**无法机械统计**,只能由盲审 D7 与章计划「人味意图」核验:"
         "与主线无关的细节、不闭合的线头。")
     out()
 

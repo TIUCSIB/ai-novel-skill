@@ -51,6 +51,38 @@ COMMA_RUN = 7          # 单句逗号数上限:一逗到底
 STD_MIN = 8.0          # 句长标准差下限:低于此值 = 句长均匀
 SHORT_RATIO_MIN = 0.15
 
+# ---- 段落级碎句堆叠(局部节奏病,全章指标看不到)----
+# 全章级"短句占比<15%"只能抓"太均匀",抓不到"普通叙述里连续 5-6 句碎句";
+# 但短句堆叠在高强度动作段是合法武器(刀落。他偏头。瓦裂。),所以按段落判:
+# 段内连续短句多、且动作词密度低 → 碎句堆叠;动作词密集 → 只提示"注意单调性"。
+# 启发式,只提示交人工复核,不自动改写。
+SHORT_RATIO_HINT = 0.75   # 段内短句占比达到此值
+SHORT_RUN_MIN = 5         # 段内连续短句数下限
+PARA_SENT_MIN = 5         # 段内叙述句数下限(对白段与 1-2 句短段落不参与)
+NARR_CHAR_MIN = 20        # 段内剥离对白后的叙述字数下限(纯对白段不参与;5 句以上
+                          # 的短碎句段可能只有 20 字左右,下限别设太高,防漏报)
+ACTION_LEX = re.compile(
+    r"砍|劈|刺|格|挡|闪|避|跃|扑|冲|撞|踢|拳|掌|剑|刀|枪|弓|弩|盾|甲|"
+    r"跌|摔|滚|爬|退|转|跳|抓|掀|砸|崩|裂|血|伤|痛|喘|汗|溅|倒|扑通|哗啦")
+
+# ---- 反方向:短句过密 / 功能短句连排(人为强调感) ----
+# 校准(2026-10-10,实书 28+1 章):成稿叙述短句占比 12%-40%(中位 18%),段落级碎句零命中;
+# 合成碎句/鼓点样本 60%-100%。因此高占比只在"动作/紧张密度低"时才提示;
+# 打斗/追逐/惊恐场景一律豁免(紧张词密度判场景)。
+SHORT_RATIO_MAX = 0.65      # 全章短句占比上限(高于此值且非紧张场景才提示)
+TENSION_DENSITY_MIN = 10.0  # 动作+紧张词密度(次/千字):达到视为打斗/追逐/惊恐场景
+EA_RUN_MIN = 3              # 功能连排:连续短句数下限(低于 SHORT_RUN_MIN,专抓鼓点强调)
+EA_CHAR_MIN = 12            # 功能连排的段落字数下限:4 句鼓点段常只有 15-19 字,
+                            # 比碎句堆叠的 NARR_CHAR_MIN 低,否则真鼓点会漏
+# 紧张/追逐/惊恐词(打斗外的第二类"短句合法"场景;只用于豁免与分类,不参与定罪)
+TENSION_LEX = re.compile(
+    r"追|逃|窜|躲|奔|跑|抢|翻|跨|截|拦|围|逼|甩|扯|拽|踹|"
+    r"惊|骇|恐|惧|慌|颤|抖|嘶|吼|喊|叫|哭|僵|缩|屏|呛|砰|轰|哗|啪|嗵|咚|塌")
+# 短句功能分类(用于"动作-感受-判断-总结"连排检测,人为强调感的主要来源)
+FEEL_LEX = re.compile(r"疼|痛|冷|热|烫|累|酸|麻|慌|怒|急|闷|堵|怕|沉|空|软|倦|渴|饿|哽|涩")
+JUDGE_LEX = re.compile(r"明白|懂了|知道|意识到|想通|看清|认出|察觉|猜到|发现|确定|清楚|醒悟")
+SUMM_LEX = re.compile(r"终于|从此|再也|注定|一切|所有|全都|永远|结束|回不去|原来|这就是|没有了|完了|晚了")
+
 # ---- 标点习惯:AI 爱用省略号留白、破折号解释;机械错误一律拦 ----
 PUNCT_REPEAT = re.compile(r"([！？。，、；!?])\1+")
 HALFWIDTH_CJK = re.compile(r"[\u4e00-\u9fff][,.!?;:][\u4e00-\u9fff]")
@@ -143,6 +175,179 @@ def narration_metrics(text: str) -> dict | None:
     }
 
 
+def sentence_kinds(sent: str) -> set[str]:
+    """单句承担的表述功能(动作/感受/判断/总结)。一句可多类。"""
+    kinds: set[str] = set()
+    if ACTION_LEX.search(sent) or TENSION_LEX.search(sent):
+        kinds.add("动作")
+    if FEEL_LEX.search(sent):
+        kinds.add("感受")
+    if JUDGE_LEX.search(sent):
+        kinds.add("判断")
+    if SUMM_LEX.search(sent):
+        kinds.add("总结")
+    return kinds
+
+
+def classify_para(narr: str) -> tuple[str, int, int, str]:
+    """段落场景分类:(类型, 动作得分, 紧张词数, 动作词样本)。
+
+    动作:重复出现的动作词(≥2 次/词,总数 ≥3)—— 真打斗节奏;
+    紧张:≥3 个不同紧张/追逐/惊恐词 —— 追逐与惊恐段(短句同样合法);
+    其余 = 普通(短句堆叠才提示)。启发式,只用于"要不要提示",不用于定罪。
+    """
+    hits: dict[str, int] = {}
+    for m in ACTION_LEX.finditer(narr):
+        w = m.group(0)
+        hits[w] = hits.get(w, 0) + 1
+    action_n = sum(c for c in hits.values() if c >= 2)
+    tension_n = len(set(TENSION_LEX.findall(narr)))
+    kind = "动作" if action_n >= 3 else ("紧张" if tension_n >= 3 else "普通")
+    return kind, action_n, tension_n, "、".join(sorted(set(hits), key=lambda x: -hits[x])[:4])
+
+
+def short_sentence_runs(text: str) -> list[dict]:
+    """段落级碎句堆叠检测(局部节奏病)。
+
+    全章指标只看到"短句占比/标准差",看不到"普通叙述里连续 5-6 句碎句";
+    但短句堆叠在打斗/追逐/惊恐段合法,所以按段落分类:
+    动作段/紧张段 → 只提示节奏单调;普通段 → 报碎句堆叠。
+
+    返回按出现顺序的段落线索:
+      {"first_line", "last_line", "para_sents", "short_sents", "short_ratio",
+       "action_hits", "tension_hits", "action_kind", "action_lex", "func_kinds"}
+    只报数+给定位,判定由作者/审校做。
+    """
+    out: list[dict] = []
+    for idx, raw in enumerate(text.splitlines()):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        narr = DIALOG_SEG.sub("", line)
+        if len(re.sub(r"\s", "", narr)) < NARR_CHAR_MIN:
+            continue  # 纯对白/短提示段不参与
+        sents = [s.strip() for s in SENT_SPLIT.split(narr) if len(s.strip()) >= 2]
+        if len(sents) < PARA_SENT_MIN:
+            continue
+        lens = [len(re.sub(r"\s", "", s)) for s in sents]
+        shorts = [l < SHORT_SENT for l in lens]
+        # 连续短句最长串:短句必须连在一起才算"堆叠",单段"短-长-短-长"不算
+        run_best, run_cur, best_start = 0, 0, 0
+        for si, is_short in enumerate(shorts):
+            if is_short:
+                run_cur += 1
+                if run_cur > run_best:
+                    run_best, best_start = run_cur, si - run_cur + 1
+            else:
+                run_cur = 0
+        if run_best < SHORT_RUN_MIN:
+            continue
+        ratio = sum(shorts) / len(shorts)
+        if ratio < SHORT_RATIO_HINT:
+            continue
+        kind, action_n, tension_n, lex = classify_para(narr)
+        win = sents[best_start:best_start + run_best]
+        funcs = sorted({k for sent in win for k in sentence_kinds(sent)})
+        out.append({
+            "first_line": idx + 1,
+            "last_line": idx + 1,
+            "para_sents": len(sents),
+            "short_sents": sum(shorts),
+            "short_ratio": ratio,
+            "action_hits": action_n,
+            "tension_hits": tension_n,
+            "action_kind": kind,
+            "action_lex": lex,
+            "func_kinds": funcs,
+        })
+    # 邻接段合并成一段提示(同一个场景被空行切成两段,分报很吵)
+    merged: list[dict] = []
+    for r in out:
+        if merged and r["first_line"] - merged[-1]["last_line"] <= 2 \
+                and r["action_kind"] == merged[-1]["action_kind"]:
+            m_ = merged[-1]
+            m_["last_line"] = r["last_line"]
+            m_["para_sents"] += r["para_sents"]
+            m_["short_sents"] += r["short_sents"]
+            m_["short_ratio"] = m_["short_sents"] / m_["para_sents"]
+            m_["action_hits"] += r["action_hits"]
+            m_["tension_hits"] = max(m_["tension_hits"], r["tension_hits"])
+            m_["func_kinds"] = sorted(set(m_["func_kinds"]) | set(r["func_kinds"]))
+            words = set((m_["action_lex"] + "、" + r["action_lex"]).split("、"))
+            words.discard("")
+            m_["action_lex"] = "、".join(sorted(words))[:40]
+        else:
+            merged.append(dict(r))
+    return merged
+
+
+def emphasis_runs(text: str, covered: list[dict] | None = None) -> list[dict]:
+    """功能短句连排(人为强调感):3-4 句短句鼓点,低于碎句堆叠阈值也要抓。
+
+    典型病样:"他攥拳。手在抖。他明白了。一切都完了。" —— 动作/感受/判断/总结
+    各占一句,读起来像强行敲鼓点。≥3 类功能即提示(必然含判断或总结句);
+    已被"普通碎句堆叠"告警覆盖的段落不重复报(那里已附功能信息),
+    但动作/紧张段里混排判断+总结句仍单独提示 —— 鼓点感与场景无关。
+    """
+    skip_lines: set[int] = set()
+    for r in covered or []:
+        if r.get("action_kind") == "普通":
+            skip_lines.update(range(r["first_line"], r["last_line"] + 1))
+    out: list[dict] = []
+    for idx, raw in enumerate(text.splitlines()):
+        lineno = idx + 1
+        if lineno in skip_lines:
+            continue
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        narr = DIALOG_SEG.sub("", line)
+        if len(re.sub(r"\s", "", narr)) < EA_CHAR_MIN:
+            continue
+        sents = [s.strip() for s in SENT_SPLIT.split(narr) if len(s.strip()) >= 2]
+        if len(sents) < EA_RUN_MIN:
+            continue
+        lens = [len(re.sub(r"\s", "", s)) for s in sents]
+        shorts = [l < SHORT_SENT for l in lens]
+        run_best, run_cur, best_start = 0, 0, 0
+        for si, is_short in enumerate(shorts):
+            if is_short:
+                run_cur += 1
+                if run_cur > run_best:
+                    run_best, best_start = run_cur, si - run_cur + 1
+            else:
+                run_cur = 0
+        if run_best < EA_RUN_MIN:
+            continue
+        win = sents[best_start:best_start + run_best]
+        funcs = sorted({k for sent in win for k in sentence_kinds(sent)})
+        if len(funcs) < 3:
+            continue
+        kind, action_n, tension_n, lex = classify_para(narr)
+        out.append({
+            "first_line": lineno,
+            "last_line": lineno,
+            "run_len": run_best,
+            "kinds": funcs,
+            "action_kind": kind,
+            "action_hits": action_n,
+            "tension_hits": tension_n,
+            "action_lex": lex,
+        })
+    return out
+
+
+def _tension_metrics(text: str) -> dict:
+    """叙述层的动作+紧张词密度(次/千字):判定"打斗/追逐/惊恐场景"用。
+
+    只用于豁免高短句占比(这类场景短句成串是节奏选择),不参与定罪。
+    """
+    narr = narration_text(text)
+    n = len(re.sub(r"\s", "", narr)) or 1
+    hits = len(ACTION_LEX.findall(narr)) + len(TENSION_LEX.findall(narr))
+    return {"hits": hits, "density": hits / n * 1000}
+
+
 def dup_within_sentences(text: str, min_len: int = 12) -> list[tuple[str, int]]:
     """章内逐字重复句:同一句(≥min_len 字)在本章出现 2 次以上。"""
     cnt = Counter(s.strip() for s in SENT_SPLIT.split(TITLE_LINE.sub("", text))
@@ -225,6 +430,7 @@ def chapter_metrics(text: str) -> dict:
         prev = head
     if runs:
         best = max(runs, key=lambda r: r["n"])
+    fruns = short_sentence_runs(text)  # 段落级碎句堆叠(命名避开上面的段首连击 runs)
     return {
         "wc": wc,
         "simile_density": simile / wc * 1000 if wc else 0,
@@ -246,6 +452,12 @@ def chapter_metrics(text: str) -> dict:
         "dialog_explain": len(DIALOG_EXPLAIN.findall(text)),
         # 句长节奏 / 标点习惯 / 感官配比 / 章内逐字重复
         "sent": narration_metrics(text),
+        # 段落级碎句堆叠(局部节奏病;含动作段/紧张段区分,只提示不改稿)
+        "short_runs": fruns,
+        # 功能短句连排(3-4 句鼓点;低于碎句阈值也要抓,人为强调感;已被 runs 覆盖的段不重复报)
+        "emphasis": emphasis_runs(text, covered=fruns),
+        # 动作+紧张词密度(打斗/追逐/惊恐场景豁免用;校准见 ai-taste)
+        "tension": _tension_metrics(text),
         "dash": text.count("——"),
         "ellipsis": text.count("……"),
         "punct_repeat": [m.group(0) for m in PUNCT_REPEAT.finditer(text)],
@@ -257,7 +469,7 @@ def chapter_metrics(text: str) -> dict:
         # 术语腔(叙述层):科技术语密度 + 机制复述
         "sci": SCI_TERM.findall(narration_text(text)),
         "mech_expl": [m.group(0) for m in MECH_EXPLAIN.finditer(narration_text(text))],
-        # 人味配额代标(可数的两项:对话失败/受挫代价;另报沉默)
+        # 人味意图代标(可数的两项:对话失败/受挫代价;另报沉默)
         "quota": quota_proxies(text),
     }
 
@@ -278,6 +490,28 @@ def repeat_baseline(texts: dict[int, str], window: int = 5) -> float:
     if not vals:
         return 0.0
     return vals[len(vals) // 2]
+
+
+def quota_window_hint(texts_by_n: dict[int, str], n: int, window: int = 3) -> str | None:
+    """近 window 章的人味均摊提示(代标,展示型,不扣分)。
+
+    人味四类改为"章功能推荐 + 弧级分布"后,单章双零不再必然有问题;但若最近
+    window 章全部"对话失败 0 且受挫 0",仍应提示审校按弧细纲「人味分布」核 ——
+    这比单章双零更接近"角色永远不失手"的实态。
+    """
+    rows = sorted(k for k in texts_by_n if k <= n)[-window:]
+    if len(rows) < 2:
+        return None
+    dlg = setback = 0
+    for k in rows:
+        q = chapter_metrics(texts_by_n[k]).get("quota") or {}
+        dlg += q.get("dlg_fail", 0)
+        setback += q.get("setback", 0)
+    if dlg == 0 and setback == 0 and len(rows) >= 3:
+        return (f"近 {len(rows)} 章人味均摊:对话失败 {dlg}、受挫代价 {setback} —— "
+                f"窗口双零,角色连续 {len(rows)} 章一个没失手;对照章计划「人味意图」"
+                f"与弧细纲「人味分布」核是否已按弧规划落实(代标,不定罪)")
+    return None
 
 
 def report_chapter(n: int, text: str, prevs: dict[int, str], window: int,
@@ -360,6 +594,58 @@ def report_chapter(n: int, text: str, prevs: dict[int, str], window: int,
             warns.append(f"单句逗号最多 {sent['comma_max']} 个(≥{COMMA_RUN})—— 一逗到底,给句子留出口")
         oks.append(f"叙述句 {sent['n']} 句,均长 {sent['mean']:.1f} 字")
 
+    # --- 段落级碎句堆叠:全章指标抓不到的局部节奏病(区分普通叙述与打斗/紧张段)---
+    for r in m["short_runs"]:
+        span = f"第 {r['first_line']} 行" if r["first_line"] == r["last_line"] else \
+            f"第 {r['first_line']}-{r['last_line']} 行"
+        detail = (f"段内 {r['para_sents']} 句、短句 {r['short_sents']} 句"
+                  f"({r['short_ratio']:.0%}),连续短句 ≥{SHORT_RUN_MIN}")
+        funcs = r.get("func_kinds") or []
+        fnote = (f";短句混排了 {'/'.join(funcs)} {len(funcs)} 类功能句"
+                 if len(funcs) >= 3 else "")
+        if r["action_kind"] in ("动作", "紧张"):
+            label = "动作段" if r["action_kind"] == "动作" else "紧张段"
+            oks.append(f"{label}短句密集:{span}({detail};动作词 {r['action_hits']} 处"
+                       f"「{r['action_lex']}」/紧张词 {r['tension_hits']} 个)"
+                       f"—— 短句成串在此类场景合法;若整章连片,人工复核是否节奏单调{fnote}")
+        else:
+            warns.append(f"普通叙述碎句堆叠:{span}({detail};动作词仅 {r['action_hits']} 处"
+                         f"「{r['action_lex']}」)—— 不像打斗/追逐/惊恐节奏,是碎句病。"
+                         f"改法:用一两句长句把相邻动作串起来,或把两句并成一句;"
+                         f"先人工复核:这里是修辞性停顿还是机械断句?{fnote}")
+
+    # --- 功能短句连排(3-4 句鼓点):低于碎句堆叠阈值的人为强调感 ---
+    for e in m["emphasis"]:
+        kinds = "/".join(e["kinds"])
+        span = f"第 {e['first_line']} 行"
+        hard = "判断" in e["kinds"] and "总结" in e["kinds"]
+        if e["action_kind"] in ("动作", "紧张") and not hard:
+            oks.append(f"{'动作' if e['action_kind'] == '动作' else '紧张'}段功能短句连排:{span}"
+                       f"(连续 {e['run_len']} 句短句覆盖 {kinds})—— 打斗/追逐节奏里动作+感受短句合法;"
+                       f"若整章连片,人工复核是否敲鼓点")
+        elif e["action_kind"] in ("动作", "紧张"):
+            warns.append(f"功能短句连排(动作场景内的判断+总结鼓点):{span}"
+                         f"(连续 {e['run_len']} 句短句覆盖 {kinds})—— 打斗里混入"
+                         f"「他明白了/一切都完了」这类短句最像人为强调;"
+                         f"建议判断改由动作带出、总结句删掉只留画面;先人工复核")
+        else:
+            warns.append(f"功能短句连排(人为强调感):{span}(连续 {e['run_len']} 句短句覆盖 "
+                         f"{kinds})—— 动作、感受、判断、总结各占一句会读成强行鼓点;"
+                         f"建议把其中 2-3 句并成复合句,或删掉总结句只留画面;"
+                         f"先人工复核:此处是否刻意强调?")
+
+    # --- 反方向:全章短句占比过高(校准:成稿 12%-40%;打斗/追逐/惊恐场景豁免)---
+    if sent and sent["n"] >= 20 and sent["short_ratio"] > SHORT_RATIO_MAX:
+        th = m["tension"]
+        if th["density"] >= TENSION_DENSITY_MIN:
+            oks.append(f"短句占比 {sent['short_ratio']:.0%}(高)—— 动作/紧张词密度 "
+                       f"{th['density']:.1f}/千字,视为打斗/追逐/惊恐节奏;人工复核是否单调")
+        else:
+            warns.append(f"短句占比 {sent['short_ratio']:.0%}(>{SHORT_RATIO_MAX:.0%})且动作/紧张密度低"
+                         f"({th['density']:.1f}/千字<{TENSION_DENSITY_MIN:g})—— 普通叙述被拆成碎句:"
+                         f"把相邻短句并成复合句,只在最强的一两处保留强调;"
+                         f"先人工复核:短句是刻意节奏还是机械断句?")
+
     # --- 标点习惯:习惯成立可放宽(voice.md 注明),机械错误一律改 ---
     wcs = m["wc"] or 1
     if m["dash"] / wcs * 1000 > DASH_LIMIT:
@@ -420,11 +706,11 @@ def report_chapter(n: int, text: str, prevs: dict[int, str], window: int,
         warns.append(f"机制复述:「{s[:26]}…」—— 先给感受再解剖一遍(复述第四种);"
                      f"『冷』已经说完了,后面的生理学是换个说法再说一次,整句删")
 
-    # --- 人味配额代标(可数的两项;全零才提示,交盲审重点核验,不硬扣分) ---
+    # --- 人味意图代标(可数的两项;全零才提示,交盲审重点核验,不硬扣分) ---
     q = m["quota"]
     if q["dlg_fail"] == 0 and q["setback"] == 0:
         warns.append("人味代标:对话失败 0、受挫代价 0 —— 本章'太干净'(对话全成功/无人吃亏),"
-                     "盲审 D7 重点核验人味四配额;沉默回避也仅 "
+                     "盲审 D7 对照「人味意图」与弧细纲「人味分布」核验;沉默回避也仅 "
                      f"{q['silence']} 处")
     else:
         oks.append(f"人味代标:对话失败 {q['dlg_fail']} / 受挫代价 {q['setback']} / "
@@ -537,6 +823,13 @@ def main() -> int:
                 reasons.append(f"同头段{m['start_run']['n']}")
             if sent and sent["n"] >= 20 and (sent["short_ratio"] < SHORT_RATIO_MIN or sent["std"] < STD_MIN):
                 reasons.append("句长僵硬")
+            if sent and sent["n"] >= 20 and sent["short_ratio"] > SHORT_RATIO_MAX \
+                    and m["tension"]["density"] < TENSION_DENSITY_MIN:
+                reasons.append("短句过密")
+            if any(r["action_kind"] == "普通" for r in m["short_runs"]):
+                reasons.append("碎句堆叠")
+            if any(e["action_kind"] == "普通" for e in m["emphasis"]):
+                reasons.append("功能连排")
             if nonvis < NONVISUAL_MIN:
                 reasons.append("非视觉不足")
             if m["punct_repeat"] or m["halfwidth"]:
@@ -572,6 +865,9 @@ def main() -> int:
             n = max(pending) if pending else max(texts)
         prevs = {k: v for k, v in texts.items() if k < n}
         oks, warns = report_chapter(n, texts[n], prevs, args.window, threshold)
+        hint = quota_window_hint(texts, n)
+        if hint:
+            warns.append(hint)
         # 黑名单绕行:规则不命中,但其核心语素在本章大面积出现
         for rule, gram, cnt in blacklist_variants(texts[n], load_blacklist(project),
                                                   min_count=3):

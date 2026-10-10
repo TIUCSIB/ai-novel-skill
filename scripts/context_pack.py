@@ -444,6 +444,13 @@ def main() -> int:
         if hit_terms:
             lines.append(f"- ⚠ 本章计划直接涉及 {len(hit_terms)} 个未揭示术语,写到它们时只许用『读者应知』层表述;"
                          "提前泄 truth 按 D5 红线处理")
+        adv = [t for t in hit_terms if t.get("reader_complexity") == "advanced"]
+        if len(adv) >= 3:
+            lines.append(f"- ⚠ 概念扎堆:{len(adv)} 个 advanced 概念(「"
+                         + "、".join(t["term"] for t in adv[:5])
+                         + "」)集中在同一章计划 —— 同一场景最多拆解 1 处;"
+                           "至少留一处只给画面/体感、不给名字;其余错开到后续章"
+                           "(reader-clarity 知识配额;直觉判断归审校)")
         add("P1 术语卡", "\n" + "\n".join(lines), caps.get("P1 术语卡"))
 
     # --- 细节召回(BM25):用本章计划查已写正文,把字面相关的旧场景端到眼前 ---
