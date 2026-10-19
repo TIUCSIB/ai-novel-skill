@@ -43,26 +43,100 @@ def recompute_foreshadow(f: dict) -> None:
     f["last_touched"] = max((b["chapter"] for b in beats), default=f.get("planned_chapter"))
 
 
-def prune_chapter(project: Path, n: int, chars: list[dict], fofs: list[dict]) -> None:
-    """撤销此前第 n 章的落账:timeline 行、伏笔节拍、进度记录。"""
-    tl = project / "ledger" / "timeline.jsonl"
-    if tl.exists():
-        lines = [l for l in tl.read_text(encoding="utf-8").splitlines()
-                 if l.strip() and not _line_is_chapter(l, n)]
-        tl.write_text("".join(l + "\n" for l in lines), encoding="utf-8")
-    for f in fofs:
-        f["beats"] = [b for b in f.get("beats", []) if b.get("chapter") != n]
-        recompute_foreshadow(f)
-    for c in chars:
-        c["last_chapter"] = max(
-            [x for x in (c.get("first_chapter"),) if x is not None] or [c.get("last_chapter") or 0])
-
-
 def _line_is_chapter(line: str, n: int) -> bool:
     try:
         return json.loads(line).get("chapter") == n
     except json.JSONDecodeError:
         return False
+
+
+def recompute_last_chapters(project: Path, chars: list[dict], orgs: list[dict],
+                            exclude: int) -> None:
+    """按 analysis/ 重算角色与组织的 last_chapter(排除正在重写的章)。
+
+    不能简单退回 first_chapter —— 那会把"第 2 章出场过"抹掉,连带影响
+    context_pack 的"久未出场角色"推荐。这里以章分析为唯一依据重放。
+    """
+    char_by_name: dict[str, set[str]] = {}
+    for c in chars:
+        for nm in [c.get("name")] + list(c.get("aliases") or []):
+            if isinstance(nm, str) and nm:
+                char_by_name.setdefault(nm, set()).add(c["id"])
+    org_by_name = {o.get("name"): o.get("id") for o in orgs if o.get("name")}
+
+    char_last: dict[str, int] = {}
+    org_last: dict[str, int] = {}
+    has_analyses = False
+    adir = project / "analysis"
+    if adir.exists():
+        for f in sorted(adir.glob("*.json")):
+            try:
+                a = load_json(f)
+            except json.JSONDecodeError:
+                continue
+            n = a.get("chapter")
+            if not isinstance(n, int) or n == exclude:
+                continue
+            has_analyses = True
+            names: set[str] = set()
+            for cu in a.get("characters") or []:
+                if cu.get("name"):
+                    names.add(cu["name"])
+            for r in a.get("relationships") or []:
+                for side in ("a", "b"):
+                    if r.get(side):
+                        names.add(r[side])
+            for ev in a.get("events") or []:
+                if ev.get("entity"):
+                    names.add(ev["entity"])
+            for nm in names:
+                for cid in char_by_name.get(nm, ()):
+                    char_last[cid] = max(char_last.get(cid, 0), n)
+            for ou in a.get("organizations") or []:
+                oid = org_by_name.get(ou.get("name"))
+                if oid:
+                    org_last[oid] = max(org_last.get(oid, 0), n)
+    for c in chars:
+        # 有分析文件时完全以重放为准:重写后已不出场的角色 last_chapter 归 None,
+        # 不能退回 first_chapter(那会让"本章登场"的角色看起来像刚出场过)
+        c["last_chapter"] = char_last.get(c["id"]) if has_analyses else c.get("last_chapter")
+    for o in orgs:
+        o["last_chapter"] = org_last.get(o.get("id")) if has_analyses else o.get("last_chapter")
+
+
+def prune_chapter(project: Path, n: int, chars: list[dict], fofs: list[dict],
+                  orgs: list[dict], tl_lines: list[str]) -> list[str]:
+    """在内存里撤销第 n 章的落账,返回过滤后的 timeline 行。
+
+    **不写盘** —— 校验失败时调用方直接返回,台账必须保持原样。
+    """
+    kept = [l for l in tl_lines if l.strip() and not _line_is_chapter(l, n)]
+    for f in fofs:
+        f["beats"] = [b for b in f.get("beats", []) if b.get("chapter") != n]
+        recompute_foreshadow(f)
+    # 角色运行时状态回滚到第 n-1 章末快照;本章才登场的角色没有"前状态",清空后由新分析重建
+    prev = project / "ledger" / "snapshots" / f"{ch_file(n - 1)}.json"
+    snap: dict[str, dict] = {}
+    if n > 1 and prev.exists():
+        try:
+            snap = {c["id"]: c for c in load_json(prev).get("characters", []) if c.get("id")}
+        except (json.JSONDecodeError, KeyError):
+            snap = {}
+    for c in chars:
+        s = snap.get(c.get("id"))
+        if s is not None:
+            c["state"] = dict(s.get("state") or {})
+            c["relationships"] = json.loads(json.dumps(s.get("relationships") or []))
+        elif c.get("first_chapter") == n:
+            c["state"] = {}
+            c["relationships"] = []
+        else:
+            c["relationships"] = [r for r in c.get("relationships", [])
+                                  if r.get("as_of_chapter") != n]
+    for o in orgs:
+        o["members"] = [m for m in o.get("members", []) if m.get("since_chapter") != n]
+    recompute_last_chapters(project, chars, orgs, exclude=n)
+    return kept
 
 
 def main() -> int:
@@ -104,8 +178,12 @@ def main() -> int:
     errors: list[str] = []
     applied: list[str] = []
 
+    tl = project / "ledger" / "timeline.jsonl"
+    tl_kept = tl.read_text(encoding="utf-8").splitlines() if tl.exists() else []
+
     if args.replace:
-        prune_chapter(project, n, chars, fofs)
+        # 只改内存,不写盘 —— 校验失败时台账必须原样不动
+        tl_kept = prune_chapter(project, n, chars, fofs, orgs, tl_kept)
         applied.append("已撤销第 N 章旧落账(--replace)")
 
     # ---- 预校验(全部通过才写入) ----
@@ -365,8 +443,11 @@ def main() -> int:
     save_json(fj, {"foreshadows": fofs})
     save_json(wj, {"rules": rules})
     save_json(oj, {"organizations": orgs})
-    tl = project / "ledger" / "timeline.jsonl"
-    with tl.open("a", encoding="utf-8") as fh:
+    # timeline 重写而非追加:--replace 时旧行已在内存里剔除,一次落盘保证不会半途丢账
+    with tl.open("w", encoding="utf-8") as fh:
+        for line in tl_kept:
+            if line.strip():
+                fh.write(line.rstrip("\n") + "\n")
         for e in tl_lines:
             fh.write(json.dumps(e, ensure_ascii=False) + "\n")
 

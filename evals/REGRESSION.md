@@ -3,7 +3,7 @@
 **脚本类用例(3/4/5/7/9 及 8 局部)已可执行:**
 
 ```bash
-python .agents/skills/ai-novel/tests/run_tests.py   # 27 个用例(t01-t27),~5 秒,全绿为过
+python .agents/skills/ai-novel/tests/run_tests.py   # 32 个用例(t01-t32),~8 秒,全绿为过
 ```
 
 改版后先跑它;以下手测清单针对**行为类用例**(1/2/6,需真实会话)。每次修改 SKILL.md、references/ 或 scripts/ 之后执行。**用例 1/2 必须在全新会话中测试**(技能触发依赖新会话的上下文)。用例基于 2026-10-07 实战(《万象源解》导入 + 第 27 章循环)沉淀。

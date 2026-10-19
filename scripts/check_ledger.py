@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -187,10 +188,10 @@ def main() -> int:
             if rc is not None and fc is not None and rc < fc:
                 E(f"术语「{name}」揭示章 {rc} 早于首现章 {fc}")
         if terms:
-            pending = [t for t in terms if not t.get("revealed")
-                       and t.get("reveal_chapter") is not None
-                       and t["reveal_chapter"] <= current]
-            for t in pending[:8]:
+            terms_pending = [t for t in terms if not t.get("revealed")
+                             and t.get("reveal_chapter") is not None
+                             and t["reveal_chapter"] <= current]
+            for t in terms_pending[:8]:
                 W(f"术语「{t['term']}」计划第 {t['reveal_chapter']} 章揭示,已到 {current} 章未标 revealed")
             oks.append(f"术语 {len(terms)} 条引用校验完成")
 
@@ -225,7 +226,11 @@ def main() -> int:
     else:
         scan = done[-2:] + pending  # 默认:最近两章 + 全部写作中的章
     for n in scan:
-        text = read_text(ch_path(project, n))
+        f = ch_path(project, n)
+        if not f.exists():
+            # 缺正文已在上面的对账段报过 ERROR,这里跳过,避免崩在文件 IO 上
+            continue
+        text = read_text(f)
         wc = count_words(text)
         if wc < wl * 0.85:
             E(f"第 {n} 章字数 {wc} 低于目标下限 {wl} 的 85%(需扩写,扩情节不灌水)")
@@ -235,6 +240,66 @@ def main() -> int:
             OK(f"第 {n} 章字数 {wc}(目标 {wl}-{wh})")
         for rule, hit in blacklist_hits(text, blacklist):
             W(f"第 {n} 章黑名单命中 [{rule}] → {hit!r}")
+
+    # --- 跨章身体状态:伤位左右/部位前后不一致(实战教训) ---
+    # 第 3、4 章写"左肩中箭",第 5 章连续三次写"右肩",审校 D1 仍给满分 ——
+    # 这类矛盾纯机械可查:相邻章同一部位的主导侧发生翻转即报警。
+    # 用"主导侧"而非"唯一侧":病稿常在同一章里混用(第 5 章就是右、左、右、右)。
+    BODY = ("肩", "臂", "腿", "脚", "手", "眼", "耳", "肋", "腕", "膝", "腰", "背")
+    side_of: dict[str, dict[int, tuple[str, int, int]]] = {}
+    for n in sorted(set(done) | set(pending)):
+        f = ch_path(project, n)
+        if not f.exists():
+            continue
+        body = read_text(f)
+        for part in BODY:
+            hits = re.findall(rf"([左右])(?:边)?(?:的)?{part}", body)
+            if not hits:
+                continue
+            left, right = hits.count("左"), hits.count("右")
+            if left == right:
+                continue  # 打平:无从判断主导侧,不报
+            dom, minor = ("左", right) if left > right else ("右", left)
+            side_of.setdefault(part, {})[n] = (dom, left + right, minor)
+    for part, per_ch in side_of.items():
+        chs = sorted(per_ch)
+        for prev, cur in zip(chs, chs[1:]):
+            dom_a, tot_a, _ = per_ch[prev]
+            dom_b, tot_b, _ = per_ch[cur]
+            if dom_a != dom_b:
+                W(f"伤位/部位左右不一致:「{part}」第 {prev} 章以 {dom_a}{part} 为主"
+                  f"({tot_a} 处),第 {cur} 章以 {dom_b}{part} 为主({tot_b} 处)"
+                  f"—— 对照 bible/characters 与台账 state 确认哪边对;"
+                  f"伤位是读者最容易记住的连续性细节")
+    oks.append("跨章身体状态左右一致性校验完成")
+
+    # --- 评审报告合规(rubric 的"强制发现"与"分数锚定"必须有机械代理) ---
+    # 实战教训:一份 96 分、0 条[必须修改]的报告直接放行了有明显 AI 味的章节。
+    # rubric 白纸黑字写了"列不出 2 条,总分封顶 90",但没人执行 —— 这里执行。
+    for n in scan:
+        rp = project / "reviews" / f"{ch_file(n)}.md"
+        if not rp.exists():
+            continue
+        rtxt = read_text(rp)
+        must = len(re.findall(r"\[必须修改\]", rtxt))
+        score_m = re.search(r"得分\s*[:：]\s*(\d{1,3})", rtxt)
+        score = int(score_m.group(1)) if score_m else None
+        if must < 2:
+            W(f"第 {n} 章评审只有 {must} 条[必须修改](rubric 要求 ≥2)—— "
+              f"按 rubric 三·2「列不出 2 条,总分封顶 90」核分;"
+              f"列不出只说明审得不够细,不是稿子没有可改进处")
+        if score is not None and score > 90 and must < 2:
+            E(f"第 {n} 章评审 {score} 分但[必须修改]仅 {must} 条 —— "
+              f"违反分数锚定(>90 需 ≥2 条举证);重审或改分")
+        if score is not None and score >= 98:
+            W(f"第 {n} 章评审 {score} 分 —— 98+ 每 10 章至多 1 章,核对是否自审通胀")
+        # 举证:报告必须出现成对的原文引用(引号包裹的正文片段)
+        quotes = re.findall(r"[「“]([^」”]{12,})[」”]", rtxt)
+        if must and len(quotes) < must:
+            W(f"第 {n} 章评审有 {must} 条[必须修改]但原文引用仅 {len(quotes)} 处 —— "
+              f"每条都必须带原文摘录与修改方向(无举证的评审视为无效)")
+        if re.search(r"写得(很)?棒|完全符合要求|无可挑剔", rtxt):
+            W(f"第 {n} 章评审含空洞肯定语 —— 出现即视为该维度未审(rubric 三·7)")
 
     report(errors, warns, oks)
     return 1 if errors else 0

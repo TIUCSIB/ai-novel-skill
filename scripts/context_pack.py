@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -28,23 +29,74 @@ except ImportError:
 # 各板块软上限(字,非空白字符):超限即折叠并留"反查提示"
 SECTION_CAPS = {
     "P0 故事骨架": 1600,
+    "P0 立意北极星": 700,
+    "P0 当前弧": 1400,
     "P1 出场角色卡": 2200,
     "P1 世界硬规则": 1200,
+    "P1 文风约束": 600,
     "P2 伏笔提醒": 1800,
 }
+
+
+def _arc_end(path: Path) -> int | None:
+    """从弧细纲里读结束章(`起止章` / `第 A-B 章` / `第 A 至 B 章`)。读不到返回 None。"""
+    text = read_text(path)
+    m = re.search(r"第\s*(\d+)\s*[-~至到]\s*(\d+)\s*章", text)
+    if m:
+        return int(m.group(2))
+    m = re.search(r"(?:起止章|章范围)\s*[:：]\s*(\d+)\s*[-~至到]\s*(\d+)", text)
+    return int(m.group(2)) if m else None
+
+
+def _voice_brief(path: Path) -> str:
+    """voice.md 的写作要点摘要:跳过禁用清单(那是机器扫的,不该占上下文预算)。"""
+    keep: list[str] = []
+    in_ban = False
+    for line in read_text(path).splitlines():
+        s = line.strip()
+        if s.startswith("#"):
+            in_ban = "禁用清单" in s
+            if not in_ban and len(s) > 2:
+                keep.append(s.lstrip("# ").strip())
+            continue
+        if in_ban or not s or s.startswith("<!--"):
+            continue
+        keep.append(s)
+        if len("\n".join(keep)) > 900:  # 够用即止,细节留在 voice.md
+            break
+    return "\n".join(keep[:40])
 
 
 def load_state(project: Path) -> dict:
     return load_json(project / "book.json")
 
 
-def parse_plan_characters(plan_text: str) -> list[str]:
+PLAN_FIELD = re.compile(r"^\s*(?:[-*+]\s+)?\*{0,2}([^:：*]{1,20}?)\*{0,2}\s*[:：]\s*(.*)$")
+_NAME_NOISE = re.compile(r"[（(][^）)]*[）)]\s*$")  # 老丹奴(cameo) → 老丹奴
+
+
+def parse_plan_field(plan_text: str, field: str) -> str | None:
+    """取章计划里某个字段的值,容忍 `- ` 列表前缀、`**加粗**`、全角/半角冒号。
+
+    schema 约定的是 `出场角色[:：]`,旧实现只认行首半角冒号 —— 换一种写法就静默丢角色卡。
+    """
     for line in plan_text.splitlines():
-        s = line.strip()
-        if s.startswith("出场角色") and (":" in s or ": " in s):
-            raw = s.split(":", 1)[1]
-            return [x.strip() for x in raw.replace("，", ",").split(",") if x.strip()]
-    return []
+        m = PLAN_FIELD.match(line)
+        if m and m.group(1).strip().strip("*").strip() == field:
+            return m.group(2).strip()
+    return None
+
+
+def parse_plan_characters(plan_text: str) -> list[str]:
+    raw = parse_plan_field(plan_text, "出场角色")
+    if not raw:
+        return []
+    out: list[str] = []
+    for part in re.split(r"[,，、;；]", raw):
+        nm = _NAME_NOISE.sub("", part).strip().strip("*").strip()
+        if nm:
+            out.append(nm)
+    return out
 
 
 def find_character(ledger: dict, name: str):
@@ -166,6 +218,48 @@ def main() -> int:
         f"累计约 {total} 字;本章目标 {wmin}-{wmax} 字;上下文预算 {budget} 字")
 
     add("P0 本章计划", "\n## P0 本章计划\n```markdown\n" + read_text(plan_file).strip() + "\n```")
+
+    # --- 北极星:compass / 当前弧 / 文风 ---
+    # 这三份此前只写在 SKILL 里让模型"自己记得",从没进过上下文包 —— 写到几十章后
+    # 立意漂移、弧目标丢失、文风回退都无人察觉。压缩成要点注入,预算不足时按序折叠。
+    def _sections(path: Path, keep: int) -> str:
+        """取 markdown 的前 keep 个非空段落(跳过标题与引用块)。"""
+        body = [ln for ln in read_text(path).splitlines()
+                if ln.strip() and not ln.lstrip().startswith(("#", ">", "<!--"))]
+        return "\n".join(body[:keep])
+
+    compass = project / "outline" / "compass.md"
+    if compass.exists() and count_words(_sections(compass, 12)) > 20:
+        add("P0 立意北极星", "\n## P0 立意北极星(compass;前三节不得漂移)\n"
+            + _sections(compass, 12), caps.get("P0 立意北极星"))
+
+    arcs = sorted((project / "outline").glob("arc-*.md"))
+    cur_arc = None
+    for a in arcs:
+        end = _arc_end(a)
+        if end is not None and n <= end:
+            cur_arc = a
+            break
+    if cur_arc is None and arcs:
+        cur_arc = arcs[-1]
+    if cur_arc is not None:
+        arc_text = read_text(cur_arc)
+        arc_cap = caps.get("P0 当前弧")
+        if count_words(arc_text) <= arc_cap:
+            add("P0 当前弧", f"\n## P0 当前弧({cur_arc.name};本章应服务于弧目标)\n"
+                + arc_text.strip())
+        else:
+            folded.append("P0 当前弧")
+            add("P0 当前弧", f"\n## P0 当前弧({cur_arc.name};超预算已折叠)\n"
+                + _sections(cur_arc, 10)
+                + f"\n- (全文 {count_words(arc_text)} 字,详见 outline/{cur_arc.name})")
+
+    voice = project / "style" / "voice.md"
+    if voice.exists():
+        vtext = _voice_brief(voice)
+        if vtext:
+            add("P1 文风约束", "\n## P1 文风约束(voice.md 摘要;禁用清单由 style_stats 全量扫)\n"
+                + vtext, caps.get("P1 文风约束"))
 
     prev = ch_path(project, n - 1)
     if n > 1 and prev.exists():
@@ -491,11 +585,17 @@ def main() -> int:
         excerpt = "\n".join(body_lines)[-tail:].strip()
         tail_blocks.append(("P2 上一章结尾原文",
                             f"\n## P2 上一章结尾原文(最后 {tail} 字 —— 从这里接笔)\n```text\n…{excerpt}\n```"))
+    # 结尾原文优先占预算:它是"接笔语态",被裁掉的代价比画像大得多
+    tail_reserved = sum(count_words(t) for label, t in tail_blocks if "上一章结尾原文" in label)
+    if tail_reserved:
+        budget = max(budget, used + tail_reserved)
     if tail_blocks:
+        # 结尾原文是"动笔语态"的锚,优先级高于画像:先保它,再让画像吃剩余预算
+        tail_blocks.sort(key=lambda x: 0 if "上一章结尾原文" in x[0] else 1)
         tail_text = "\n".join(t for _, t in tail_blocks)
         tail_used = count_words(tail_text)
         if used + tail_used > budget:
-            for label, t in tail_blocks:  # 超预算时先裁结尾块,再裁画像
+            for label, t in tail_blocks:  # 超预算时先裁画像,结尾原文尽量保住
                 if used + count_words(t) <= budget:
                     blocks.append((label, t))
                     used += count_words(t)

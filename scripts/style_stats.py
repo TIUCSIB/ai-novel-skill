@@ -83,6 +83,37 @@ FEEL_LEX = re.compile(r"疼|痛|冷|热|烫|累|酸|麻|慌|怒|急|闷|堵|怕|
 JUDGE_LEX = re.compile(r"明白|懂了|知道|意识到|想通|看清|认出|察觉|猜到|发现|确定|清楚|醒悟")
 SUMM_LEX = re.compile(r"终于|从此|再也|注定|一切|所有|全都|永远|结束|回不去|原来|这就是|没有了|完了|晚了")
 
+# ---- 段落节奏:一句一段(句级指标看不见的排版级 AI 味)----
+# 病根:逐句生成时"每句独立成行"是局部最安全的选择 —— 不会写出病句,看着也像网文。
+# 代价是每个句子权重相同、强调失效,读者被强制高频停顿。真人按"意群"分段:
+# 一个动作+一个反应+一句判断挤在同一段,落锤句才单独成段。
+# 校准(本书 1-5 章 + 同作者润色稿,2026-10-19):
+#   正常稿  段密度 26.5-37.2/千字,单句段 44%-65%,最长连续 4-9 段
+#   病稿    段密度 43.2/千字,单句段 80%,最长连续 16 段
+# **单句段占比不可单独定罪**:第 2 章 65%、润色稿 44% 都合法(对白密集章天然偏高)。
+# 有区分度的是"段密度"与"最长连续串" —— 后者专抓"整片场景被拆成一行一句"。
+ONE_SENT_RUN_MAX = 10      # 连续单句段上限
+PARA_DENSITY_MAX = 40.0    # 段密度上限(段/千字):碎成一行一段时显著偏高
+PARA_DENSITY_WARN = 36.0   # 段密度提示线(留缓冲,避免对白密集章误报)
+
+# ---- 连续说明文段:叙述者中断场景、连着讲背景/原理(百科说教的主要形态)----
+# 判据三段:①剥离对白后 ≥12 字;②没有"镜头能看见的物理动作";③含术语/制度词,
+# 或有 ≥2 个解释连接词。连续 ≥2 段即提示 —— 单段说明合法(一句带过),连排才是病。
+EXPO_MIN_CHARS = 12
+EXPO_TERM = re.compile(
+    r"细胞|分子|离子|黏膜|神经|物理|化学|杂质|氯化|结晶|挥发|酸气|受体|含量|浓度|"
+    r"提纯|纯度|血红|蛋白|免疫|热力学|压强|密度|频率|氧化|还原|催化|"
+    r"官盐|粗盐|精盐|雪盐|溶解|过滤|重结晶|"
+    r"刑统|县衙|生员|御史|朝廷|礼房|勾牒|军械|律例|律法|品级|俸禄")
+EXPO_CONN = re.compile(
+    r"因为|所以|这是|那是|原来|正因|毕竟|只要|意味着|能够|属于|称为|不过是|"
+    r"正是因为|也就是说|换句话说|本质上|由此|可见|凡是|一律|按律|依律")
+# 只收"身体能做出的动作"。看/听/说/问/答/查/见 不算 —— 说明文里到处都是"看""说"。
+EXPO_ACTION = re.compile(
+    r"走|跑|站|坐|躺|趴|蹲|跪|拿|放|推|拉|抱|按|抓|掀|砸|扔|塞|浇|烧|煮|挖|搬|端|递|接|"
+    r"穿|脱|洗|擦|敲|踩|跨|扶|挥|甩|踢|砍|劈|刺|挡|闪|避|跃|扑|冲|撞|抖|缩|退|转|抬|低|"
+    r"伸|握|咳|笑|哭|喊|吼|叫|瞪|盯|瞧|瞥|摸|碰|停|跺|迈|挪|靠|倚|拽|扯|拖|咬|吐|吞|咽")
+
 # ---- 标点习惯:AI 爱用省略号留白、破折号解释;机械错误一律拦 ----
 PUNCT_REPEAT = re.compile(r"([！？。，、；!?])\1+")
 HALFWIDTH_CJK = re.compile(r"[\u4e00-\u9fff][,.!?;:][\u4e00-\u9fff]")
@@ -204,6 +235,80 @@ def classify_para(narr: str) -> tuple[str, int, int, str]:
     tension_n = len(set(TENSION_LEX.findall(narr)))
     kind = "动作" if action_n >= 3 else ("紧张" if tension_n >= 3 else "普通")
     return kind, action_n, tension_n, "、".join(sorted(set(hits), key=lambda x: -hits[x])[:4])
+
+
+def paragraph_rhythm(text: str) -> dict:
+    """段落节奏:一句一段的排版级 AI 味。
+
+    与 short_sentence_runs 互补:那里看"段内短句成串",这里看"整章被拆成一行一句"。
+    统计**全部段落**(含"两匹快马。"这类短提示段) —— 病稿的典型特征正是把本该
+    并入上下文的短语也单独成行,所以不能只数长叙述段(实测那样两版无差别)。
+
+    返回 {paras, one_sent, one_ratio, longest_run, run_start_line, density}。
+    density = 段落数 / 千字,句级指标完全看不见的维度。
+    """
+    flags: list[tuple[int, bool]] = []
+    for idx, raw in enumerate(text.splitlines()):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        sents = [s for s in SENT_SPLIT.split(line) if len(s.strip()) >= 2]
+        flags.append((idx + 1, len(sents) <= 1))
+    if not flags:
+        return {"paras": 0, "one_sent": 0, "one_ratio": 0.0,
+                "longest_run": 0, "run_start_line": 0, "density": 0.0}
+    one = sum(1 for _, flag in flags if flag)
+    best, cur, start = 0, 0, 0
+    for lineno, flag in flags:
+        if flag:
+            cur += 1
+            if cur > best:
+                best, start = cur, lineno - cur + 1
+        else:
+            cur = 0
+    wc = count_words(text) or 1
+    return {
+        "paras": len(flags),
+        "one_sent": one,
+        "one_ratio": one / len(flags),
+        "longest_run": best,
+        "run_start_line": start,
+        "density": len(flags) / wc * 1000,
+    }
+
+
+def exposition_runs(text: str) -> list[dict]:
+    """连续说明文段:叙述者中断场景,连着讲背景/原理(百科说教的主要形态)。
+
+    单段说明合法(一句带过世界观),**连排**才是病:读者被拉出场景上两段课。
+    判据:剥离对白后 ≥EXPO_MIN_CHARS 字 + 无"镜头能看见的物理动作" +
+    (含术语/制度词 或 ≥2 个解释连接词)。连续 ≥2 段即报,给行号与原文摘录。
+    """
+    items: list[tuple[int, str]] = []
+    for idx, raw in enumerate(text.splitlines()):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        items.append((idx + 1, line))
+    groups: list[list[tuple[int, str]]] = []
+    cur: list[tuple[int, str]] = []
+    prev_idx = -2
+    for pos, (lineno, line) in enumerate(items):
+        body = re.sub(r"\s", "", DIALOG_SEG.sub("", line))
+        hit = (len(body) >= EXPO_MIN_CHARS
+               and not EXPO_ACTION.search(body)
+               and (EXPO_TERM.search(body) or len(EXPO_CONN.findall(body)) >= 2))
+        if hit and pos == prev_idx + 1:
+            cur.append((lineno, line))
+        else:
+            if len(cur) >= 2:
+                groups.append(cur)
+            cur = [(lineno, line)] if hit else []
+        prev_idx = pos
+    if len(cur) >= 2:
+        groups.append(cur)
+    return [{"first_line": g[0][0], "last_line": g[-1][0],
+             "paras": len(g), "sample": g[0][1][:34]} for g in groups]
 
 
 def short_sentence_runs(text: str) -> list[dict]:
@@ -432,8 +537,7 @@ def chapter_metrics(text: str) -> dict:
         best = max(runs, key=lambda r: r["n"])
     fruns = short_sentence_runs(text)  # 段落级碎句堆叠(命名避开上面的段首连击 runs)
     return {
-        "wc": wc,
-        "simile_density": simile / wc * 1000 if wc else 0,
+        "wc": wc,        "simile_density": simile / wc * 1000 if wc else 0,
         "simile_count": simile,
         "excl_density": excl / wc * 1000 if wc else 0,
         "piled": piled,
@@ -471,6 +575,9 @@ def chapter_metrics(text: str) -> dict:
         "mech_expl": [m.group(0) for m in MECH_EXPLAIN.finditer(narration_text(text))],
         # 人味意图代标(可数的两项:对话失败/受挫代价;另报沉默)
         "quota": quota_proxies(text),
+        # 段落节奏(一句一段)与连续说明文段 —— 句级指标看不见的排版/信息密度病
+        "para": paragraph_rhythm(text),
+        "expo": exposition_runs(text),
     }
 
 
@@ -593,6 +700,35 @@ def report_chapter(n: int, text: str, prevs: dict[int, str], window: int,
         if sent["comma_max"] >= COMMA_RUN:
             warns.append(f"单句逗号最多 {sent['comma_max']} 个(≥{COMMA_RUN})—— 一逗到底,给句子留出口")
         oks.append(f"叙述句 {sent['n']} 句,均长 {sent['mean']:.1f} 字")
+
+    # --- 段落节奏:一句一段(句级指标完全看不见的排版级 AI 味)---
+    # 单句率只报数不作定罪依据(对白密集章天然偏高);定罪看段密度与最长连续串。
+    para = m["para"]
+    if para["paras"] >= 20:
+        if para["density"] > PARA_DENSITY_MAX:
+            warns.append(f"段密度 {para['density']:.0f}/千字(>{PARA_DENSITY_MAX:g},"
+                         f"全章 {para['paras']} 段 / {m['wc']} 字)"
+                         f"—— 段落被切得过碎,接近'一句一段'。合段不删字:把同一意群的"
+                         f"句子并回去,只让落锤句单独成段")
+        elif para["density"] > PARA_DENSITY_WARN:
+            oks.append(f"段密度 {para['density']:.0f}/千字(偏高但在容差内)")
+        else:
+            oks.append(f"段密度 {para['density']:.0f}/千字")
+        if para["longest_run"] > ONE_SENT_RUN_MAX:
+            warns.append(f"单句段连排:连续 {para['longest_run']} 个段落各只有一句(起始第 "
+                         f"{para['run_start_line']} 行,>{ONE_SENT_RUN_MAX})"
+                         f"—— 整片场景被拆成一行一句,每句权重相同、强调失效。"
+                         f"按意群合并相邻段(一个动作+一个反应+一句判断),留 2-3 处落锤句")
+        else:
+            oks.append(f"单句段 {para['one_ratio']:.0%},最长连续 {para['longest_run']} 段")
+
+    # --- 连续说明文段:叙述者中断场景连讲两段以上背景/原理 ---
+    for e in m["expo"]:
+        warns.append(f"连续说明文段:第 {e['first_line']}-{e['last_line']} 行"
+                     f"({e['paras']} 段无人物动作)如「{e['sample']}…」—— "
+                     f"读者被拉出场景上课。改法:只留一句最关键的,其余删掉或改由角色"
+                     f"在动作里说出来(问一句、骂一句、试错一次);术语删掉后画面和决定"
+                     f"都没少=装饰")
 
     # --- 段落级碎句堆叠:全章指标抓不到的局部节奏病(区分普通叙述与打斗/紧张段)---
     for r in m["short_runs"]:
@@ -840,6 +976,12 @@ def main() -> int:
                 reasons.append(f"术语密度{sci_d:.1f}")
             if mech_cnt > 0:
                 reasons.append(f"机制复述{mech_cnt}处")
+            if m["para"]["density"] > PARA_DENSITY_MAX:
+                reasons.append(f"段密度{m['para']['density']:.0f}")
+            if m["para"]["longest_run"] > ONE_SENT_RUN_MAX:
+                reasons.append(f"单句段连排{m['para']['longest_run']}")
+            if m["expo"]:
+                reasons.append(f"说明文段{len(m['expo'])}组")
 
             flag = " ⚠" if reasons else ""
             if reasons:

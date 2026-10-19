@@ -34,8 +34,9 @@ def _xhtml(title: str, body_html: str) -> str:
 
 
 def _body_to_html(body: str) -> str:
-    paras = [p.strip().replace("\n", "<br/>") for p in body.split("\n\n") if p.strip()]
-    return "\n".join(f"<p>{escape(p)}</p>" for p in paras)
+    """段落 → <p>;段内换行转 <br/>。必须先转义文本再插标签,否则 <br/> 会被转义成字面量。"""
+    paras = [p.strip() for p in body.split("\n\n") if p.strip()]
+    return "\n".join("<p>" + escape(p).replace("\n", "<br/>") + "</p>" for p in paras)
 
 
 def build_epub(out_path: Path, title: str, genre: str, parts, total_words: int) -> None:

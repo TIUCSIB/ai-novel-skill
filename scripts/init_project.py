@@ -219,8 +219,8 @@ VOICE = """# 文风规范:《{title}》
 - 空气仿佛凝固
 - 深吸一口气
 - regex:不是[^。!?]{{1,12}}[,，]而是
-- regex:总之[,,。!]
-- regex:(毕竟|总的来说)[,,。]
+- regex:总之[,,，。!]
+- regex:(毕竟|总的来说)[,,，。]
 """
 
 
@@ -295,11 +295,13 @@ def main() -> int:
         "created": today(),
         "updated": today(),
     }
-    # --force 重建模板时不覆盖已有进度
+    # --force 只重建模板,不动已有进度与书籍元数据(书名/题材/体量是用户设定,不能被默认值冲掉)
     bj = root / "book.json"
     if bj.exists() and args.force:
         old = load_json(bj)
-        for k in ("phase", "current_chapter", "completed_chapters", "chapter_word_counts", "created"):
+        for k in ("title", "genre", "logline", "target_chapters", "words_per_chapter",
+                  "phase", "current_chapter", "completed_chapters", "chapter_word_counts",
+                  "created"):
             if k in old:
                 book[k] = old[k]
     save_json(bj, book)
@@ -315,17 +317,27 @@ def main() -> int:
         "outline/master.md": MASTER,
         "style/voice.md": VOICE.format(title=title),
     }
+    backed_up: list[str] = []
     for rel, content in templates.items():
         p = root / rel
         if p.exists() and not args.force:
             continue
+        if p.exists():
+            # --force 会覆盖用户已填写的模板,先留一份 .bak(只保留最近一次,避免堆垃圾)
+            bak = p.with_suffix(p.suffix + ".bak")
+            bak.write_bytes(p.read_bytes())
+            backed_up.append(rel)
         p.write_text(content, encoding="utf-8")
 
-    save_json(root / "ledger" / "characters.json", {"characters": []})
-    save_json(root / "ledger" / "organizations.json", {"organizations": []})
-    save_json(root / "ledger" / "foreshadowing.json", {"foreshadows": []})
-    save_json(root / "ledger" / "world_rules.json", {"rules": []})
-    save_json(root / "ledger" / "terms.json", {"terms": []})
+    # 台账是唯一事实源:--force 也只在文件缺失时初始化,绝不清空
+    for name, empty in (("characters.json", {"characters": []}),
+                        ("organizations.json", {"organizations": []}),
+                        ("foreshadowing.json", {"foreshadows": []}),
+                        ("world_rules.json", {"rules": []}),
+                        ("terms.json", {"terms": []})):
+        p = root / "ledger" / name
+        if not p.exists():
+            save_json(p, empty)
     tl = root / "ledger" / "timeline.jsonl"
     if not tl.exists():
         tl.write_text("", encoding="utf-8")
@@ -336,6 +348,9 @@ def main() -> int:
     try_git(root, title)
 
     print(f"项目已创建:{root.resolve()}")
+    if backed_up:
+        print(f"已备份被覆盖的模板({len(backed_up)} 个,后缀 .bak):{', '.join(backed_up)}")
+        print("  台账与 book.json 的书籍元数据/进度未被改动。")
     print("下一步:填写 premise.md 与 bible/,补全 outline/master.md 后向用户确认。")
     return 0
 

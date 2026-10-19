@@ -753,6 +753,234 @@ class Regression(unittest.TestCase):
         for n in (40, 41, 42, 43):
             (self.proj / f"chapters/{n:03d}.md").unlink()
 
+    # ---------- t29: --replace 原子性与 last_chapter 重放 ----------
+    def test_t29_replace_atomic_and_last_chapter(self):
+        # 准备 3 章:甲 1-2 章出场、乙 1/3 章出场
+        for n in (31, 32, 33):
+            self._write(f"chapters/{n:03d}.md", f"# 第{n}章 测试\n\n" + CH1_TEXT)
+            self._write(f"outline/chapter-{n:03d}.md", f"# 第{n}章 测试\n出场角色: 主角\n")
+        a1 = json.loads(json.dumps(CH1_ANALYSIS))
+        a1["chapter"] = 31
+        a1["foreshadow_ops"] = []
+        a1["organizations"] = []
+        a1["world_facts"] = []
+        a1["characters"] = [{"name": "甲", "updates": {"location": "山门"}},
+                            {"name": "乙", "updates": {"location": "山门"}}]
+        a2 = json.loads(json.dumps(a1))
+        a2["chapter"] = 32
+        a2["characters"] = [{"name": "甲", "updates": {"location": "山下"}}]
+        a3 = json.loads(json.dumps(a1))
+        a3["chapter"] = 33
+        a3["characters"] = [{"name": "乙", "updates": {"location": "城里"}}]
+        for n, a in ((31, a1), (32, a2), (33, a3)):
+            self._write(f"analysis/{n:03d}.json", json.dumps(a, ensure_ascii=False))
+            p = run("apply_analysis.py", self.proj, n)
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+
+        tl_before = self._read("ledger/timeline.jsonl")
+        chars_before = self._read("ledger/characters.json")
+
+        # ① 校验失败的 --replace 必须完全不动台账(旧实现会先删 timeline 再报错)
+        bad = json.loads(json.dumps(a1))
+        bad["relationships"] = [{"a": "甲", "b": "幽灵人", "type": "友"}]
+        self._write("analysis/031.json", json.dumps(bad, ensure_ascii=False))
+        p = run("apply_analysis.py", self.proj, 31, "--replace")
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("幽灵人", p.stdout)
+        self.assertEqual(self._read("ledger/timeline.jsonl"), tl_before,
+                         "--replace 校验失败不得删 timeline")
+        self.assertEqual(self._read("ledger/characters.json"), chars_before,
+                         "--replace 校验失败不得改角色状态")
+
+        # ② 重写第 31 章后,后面章节的 last_chapter 不得回退
+        ok = json.loads(json.dumps(a1))
+        ok["relationships"] = []
+        self._write("analysis/031.json", json.dumps(ok, ensure_ascii=False))
+        p = run("apply_analysis.py", self.proj, 31, "--replace")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        chars = json.loads(self._read("ledger/characters.json"))["characters"]
+        last = {c["name"]: c["last_chapter"] for c in chars}
+        self.assertEqual(last.get("甲"), 32, "甲在第 32 章出场,重写 31 章不得回退")
+        self.assertEqual(last.get("乙"), 33, "乙在第 33 章出场,重写 31 章不得回退")
+
+        # ③ timeline 不得出现重复行
+        rows = [l for l in self._read("ledger/timeline.jsonl").splitlines() if l.strip()]
+        self.assertEqual(len(rows), len(set(rows)), "timeline 不得重复")
+        for n in (31, 32, 33):
+            for rel in (f"chapters/{n:03d}.md", f"analysis/{n:03d}.json",
+                        f"outline/chapter-{n:03d}.md", f"ledger/snapshots/{n:03d}.json"):
+                (self.proj / rel).unlink(missing_ok=True)
+
+    # ---------- t30: check_ledger 有术语账时不崩 ----------
+    def test_t30_check_ledger_with_terms(self):
+        # 前面的用例可能把章节标记完成又删了正文,这里先复位进度,避免干扰本用例判定
+        book = json.loads(self._read("book.json"))
+        book["completed_chapters"] = []
+        book["current_chapter"] = 50
+        self._write("book.json", json.dumps(book, ensure_ascii=False))
+        self._write("chapters/050.md", "# 第50章 术语\n\n" + CH1_TEXT)
+        self._write("analysis/050.json", json.dumps(
+            {"chapter": 50, "summary": "术语首现。"}, ensure_ascii=False))
+        terms = [{"id": "T-001", "term": "源解", "first_chapter": 50, "brief": "残卷",
+                  "truth": "真相", "reveal_chapter": 50, "revealed": False}]
+        self._write("ledger/terms.json", json.dumps({"terms": terms}, ensure_ascii=False))
+        # 四种模式都不得抛 TypeError(旧实现 pending 被术语列表遮蔽)。
+        # 退出码可能因其它用例遗留的章节状态非 0,这里只锁"不崩 + 术语段跑到"。
+        for args in ([], ["--pending"], ["--all"], ["--chapter", "50"]):
+            p = run("check_ledger.py", self.proj, *args)
+            self.assertNotIn("Traceback", p.stderr, f"{args}: {p.stderr}")
+            self.assertNotIn("unsupported format string", p.stderr, f"{args}: {p.stderr}")
+        self.assertIn("术语 1 条", run("check_ledger.py", self.proj).stdout)
+        (self.proj / "chapters/050.md").unlink()
+        (self.proj / "analysis/050.json").unlink()
+        self._write("ledger/terms.json", json.dumps({"terms": []}, ensure_ascii=False))
+
+    # ---------- t31: init --force 不得清空台账/元数据 ----------
+    def test_t31_init_force_preserves_data(self):
+        import shutil
+        tmp = Path(tempfile.mkdtemp(prefix="ainovel-force-")) / "书"
+        try:
+            p = run("init_project.py", "--dir", tmp, "--title", "原书名", "--genre", "玄幻",
+                    "--chapters", "300", "--words", "3000-6000")
+            self.assertEqual(p.returncode, 0, p.stderr)
+            (tmp / "ledger/characters.json").write_text(
+                json.dumps({"characters": [{"id": "C-001", "name": "甲"}]}, ensure_ascii=False),
+                encoding="utf-8")
+            (tmp / "bible/world.md").write_text("改过的设定\n", encoding="utf-8")
+            p = run("init_project.py", "--dir", tmp, "--force")
+            self.assertEqual(p.returncode, 0, p.stderr)
+            book = json.loads((tmp / "book.json").read_text(encoding="utf-8"))
+            self.assertEqual(book["title"], "原书名", "--force 不得重置书名")
+            self.assertEqual(book["target_chapters"], 300)
+            chars = json.loads((tmp / "ledger/characters.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(chars["characters"]), 1, "--force 不得清空台账")
+            self.assertTrue((tmp / "bible/world.md.bak").exists(), "覆盖模板前应留备份")
+        finally:
+            shutil.rmtree(tmp.parent, ignore_errors=True)
+
+    # ---------- t32: EPUB 段内换行 + 章计划字段解析 ----------
+    def test_t32_epub_br_and_plan_parse(self):
+        self._write("chapters/060.md", "# 第60章 换行\n\n第一行\n第二行同段\n\n第三段。\n")
+        book = json.loads(self._read("book.json"))
+        book["completed_chapters"] = sorted(set(book.get("completed_chapters", [])) | {60})
+        self._write("book.json", json.dumps(book, ensure_ascii=False))
+        out = self.proj / "export/t32.epub"
+        p = run("export.py", self.proj, "--format", "epub", "--out", out)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        with zipfile.ZipFile(out) as z:
+            html = z.read("EPUB/ch060.xhtml").decode("utf-8")
+        self.assertIn("<br/>", html, "段内换行应渲染为 <br/>")
+        self.assertNotIn("&lt;br/&gt;", html, "<br/> 不得被转义成字面量")
+
+        # 章计划字段:全角冒号 / 列表前缀 / 加粗 / 顿号 / 括注
+        sys.path.insert(0, str(SCRIPTS))
+        from context_pack import parse_plan_characters
+        cases = {
+            "出场角色：甲，乙": ["甲", "乙"],
+            "- 出场角色: 甲, 乙": ["甲", "乙"],
+            "**出场角色**: 甲": ["甲"],
+            "出场角色：甲、乙": ["甲", "乙"],
+            "出场角色: 甲, 老丹奴(cameo)": ["甲", "老丹奴"],
+        }
+        for text, want in cases.items():
+            self.assertEqual(parse_plan_characters(text), want, f"解析失败:{text}")
+        (self.proj / "chapters/060.md").unlink()
+        out.unlink()
+
+    # ---------- t33: 段落节奏(一句一段必报 / 意群成段不误伤) ----------
+    def test_t33_paragraph_rhythm(self):
+        # ① 一句一段:每句独占一行 + 段密度过高 → 必须报段密度与单句段连排
+        choppy = "# 第33章 碎排\n\n" + "".join(
+            f"{line}\n\n" for _ in range(6) for line in (
+                "沈昭儿放下粗瓷碗。",
+                "她侧过头，耳尖微微颤动。",
+                "村口的狗叫得很凶。",
+                "马蹄踏在冻雪上。",
+                "两匹快马。",
+                "沈昭儿的声音压得很低。",
+            ))
+        self._write("chapters/033.md", choppy)
+        p = run("style_stats.py", self.proj, "--chapter", "33")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("段密度", p.stdout, "一句一段必须报段密度")
+        self.assertIn("单句段连排", p.stdout, "连续单句段必须给行号定位")
+        self.assertIn("合段不删字", p.stdout, "提示必须说明改法是合段而非删字")
+        # ② 意群成段:动作+反应+判断挤在一段 → 不得误报
+        grouped = "# 第33章 成段\n\n" + "".join(
+            "沈昭儿放下碗，侧耳听了片刻，脸色变了。"
+            "她撑着床板想坐起来，刚一动，左肩的布条就渗出了血。"
+            "顾玄按住她，把碗夺下来放到一边。\n\n" for _ in range(12))
+        self._write("chapters/033.md", grouped)
+        p2 = run("style_stats.py", self.proj, "--chapter", "33")
+        self.assertEqual(p2.returncode, 0, p2.stderr)
+        self.assertNotIn("段密度", p2.stdout, "意群成段不得被误判成一句一段")
+        self.assertNotIn("单句段连排", p2.stdout)
+        (self.proj / "chapters/033.md").unlink()
+
+    # ---------- t34: 连续说明文段(连排必报 / 单段与带动作段不误伤) ----------
+    def test_t34_exposition_runs(self):
+        # ① 连排说明文:两段以上无人物动作、只讲原理 → 必须报并给行号
+        expo = ("# 第34章 说明\n\n"
+                "他走到灶边。\n\n"
+                "大周的官盐提纯粗糙，杂质极多，入口又苦又涩，氯化镁含量严重超标。\n\n"
+                "但洁白无瑕的精制雪盐，一两就能卖出天价。\n\n"
+                "提纯盐粒，对工科生来说不过是溶解、过滤和重结晶的基本操作。\n\n"
+                "他把盐放进嘴里。\n")
+        self._write("chapters/034.md", expo)
+        p = run("style_stats.py", self.proj, "--chapter", "34")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("连续说明文段", p.stdout, "连排说明文必须报出")
+        self.assertIn("第 5", p.stdout, "警告必须带行号定位")
+        # ② 单段说明 + 带动作 → 不得误报(单段合法)
+        single = ("# 第34章 单段\n\n"
+                  "大周的官盐提纯粗糙，杂质极多，入口又苦又涩。\n\n"
+                  "顾玄捏起一撮粗盐放进嘴里，嚼了嚼，吐在地上。\n\n"
+                  "他把陶盆搬到桌上。\n")
+        self._write("chapters/034.md", single)
+        p2 = run("style_stats.py", self.proj, "--chapter", "34")
+        self.assertEqual(p2.returncode, 0, p2.stderr)
+        self.assertNotIn("连续说明文段", p2.stdout, "单段说明不得被误报")
+        (self.proj / "chapters/034.md").unlink()
+
+    # ---------- t35: 评审报告合规(0 条必须修改 + 高分 = ERROR) ----------
+    def test_t35_review_compliance(self):
+        self._write("chapters/035.md", "# 第35章 测试\n\n" + CH1_TEXT)
+        # ① 96 分、0 条[必须修改] → 违反分数锚定,必须 ERROR
+        self._write("reviews/035.md",
+                    "# 章节评审:第 35 章\n* 得分: 96 / 100\n"
+                    "* 结论: PASS\n\n全章写得很棒,完全符合要求。\n")
+        p = run("check_ledger.py", self.proj, "--chapter", "35")
+        self.assertEqual(p.returncode, 1, "高分 + 无[必须修改]必须 FAIL")
+        self.assertIn("违反分数锚定", p.stdout)
+        self.assertIn("空洞肯定语", p.stdout)
+        # ② 合规报告:≥2 条带原文举证 → 不因评审报 ERROR
+        self._write("reviews/035.md",
+                    "# 章节评审:第 35 章\n* 得分: 88 / 100\n* 结论: PASS\n\n"
+                    "### [必须修改]\n"
+                    "1. 「文字内容。文字内容。文字内容。」—— 重复,换写法。\n"
+                    "2. 「文字内容。文字内容。」—— 说明过长,压成一句。\n")
+        p2 = run("check_ledger.py", self.proj, "--chapter", "35")
+        self.assertNotIn("违反分数锚定", p2.stdout)
+        self.assertNotIn("评审只有 0 条", p2.stdout)
+        (self.proj / "chapters/035.md").unlink()
+        (self.proj / "reviews/035.md").unlink()
+
+    # ---------- t36: 跨章伤位左右翻转(主导侧反转必报) ----------
+    def test_t36_injury_side_consistency(self):
+        # 第 36 章左肩为主,第 37 章右肩为主 → 必须报左右不一致
+        # 正文要够字数下限,否则字数 ERROR 会盖住本用例要验的信号
+        pad = "风雪压着屋檐，屋里一时没人说话，只有灶膛里的柴偶尔爆一声。" * 60
+        self._write("chapters/036.md",
+                    "# 第36章 前\n\n" + "她左肩的布条渗出血来。" * 6 + "\n\n" + pad + "\n")
+        self._write("chapters/037.md",
+                    "# 第37章 后\n\n" + "他避开她右肩，把她放下。右肩又渗血了。" * 6
+                    + "\n\n" + pad + "\n")
+        p = run("check_ledger.py", self.proj, "--chapter", "37")
+        self.assertIn("左右不一致", p.stdout, "主导侧翻转必须报")
+        self.assertIn("「肩」", p.stdout)
+        (self.proj / "chapters/036.md").unlink()
+        (self.proj / "chapters/037.md").unlink()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
