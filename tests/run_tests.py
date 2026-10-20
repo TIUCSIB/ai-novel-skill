@@ -981,6 +981,40 @@ class Regression(unittest.TestCase):
         (self.proj / "chapters/036.md").unlink()
         (self.proj / "chapters/037.md").unlink()
 
+    # ---------- t37: 长书上下文(预算随章数上调 / 骨架渐进折叠 / 长书提醒) ----------
+    def test_t37_long_book_context(self):
+        # 造 200 章规模历史:每 10 章一个骨架节点(10..190)
+        for k in range(10, 200, 10):
+            a = json.loads(json.dumps(CH1_ANALYSIS))
+            a["chapter"] = k
+            a["title"] = f"第{k}章 长书骨架"
+            a["summary"] = f"第{k}章发生的关键转折:主角推进主线并埋下新伏笔。" * 12
+            self._write(f"analysis/{k:03d}.json", json.dumps(a, ensure_ascii=False))
+        self._write("outline/chapter-200.md", "# 第200章 计划\n出场角色: 主角\n")
+        # ① 默认预算随章数上调:200 章 → 8000 + (200-80)*50 = 14000
+        p = run("context_pack.py", self.proj, 200)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("上下文预算 14000", p.stdout)
+        self.assertIn("长书提醒", p.stdout, "第 100 章起必须注入纪律块")
+        # ② 压预算 → 骨架折叠:远段 50 章桶保留拼接剧情线(不是只有章号)+章号+反查提示
+        p2 = run("context_pack.py", self.proj, 200, "--budget", "4000")
+        self.assertEqual(p2.returncode, 0, p2.stderr)
+        self.assertIn("已折叠板块", p2.stdout)
+        bucket = next(ln for ln in p2.stdout.splitlines()
+                      if "第 1-50 章" in ln and "反查" in ln)
+        self.assertIn("、", bucket, "远段桶必须保留拼接剧情线,不能只有章号")
+        self.assertIn("章号", bucket)
+        # ③ 第 100 章以下不弹长书提醒(防早期噪声)
+        self._write("outline/chapter-014.md", "# 第14章 计划\n出场角色: 主角\n")
+        p3 = run("context_pack.py", self.proj, 14)
+        self.assertEqual(p3.returncode, 0, p3.stderr)
+        self.assertNotIn("长书提醒", p3.stdout)
+        # 清理夹具
+        for k in range(10, 200, 10):
+            (self.proj / f"analysis/{k:03d}.json").unlink()
+        (self.proj / "outline/chapter-200.md").unlink()
+        (self.proj / "outline/chapter-014.md").unlink()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

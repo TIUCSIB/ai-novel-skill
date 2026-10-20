@@ -7,8 +7,11 @@
 先写计划并登记 planned 伏笔,再重新运行。
 
 **预算与折叠**(借鉴 Ai-Novel 的上下文预算可观测性):每个板块按字面长度计量,
-末尾输出预算表;超过 --budget 的板块自动折叠(骨架摘要按 50 章聚段、远期伏笔/世界规则只列条数,
+末尾输出预算表;超过 --budget 的板块自动折叠(骨架远段按 50 章聚合、远期伏笔/世界规则只列条数,
 细节用 query_ledger 反查),保证写到两三百章时上下文包不会无限膨胀。
+**预算随书长自动上调**:默认 8000 字,第 80 章起每增一章 +50 字,16000 字封顶(骨架折叠推迟约一倍);
+显式 --budget 覆盖自动值。折叠粒度同步放宽:近段骨架保留节点数 = 5 × (budget/8000)。
+第 100 章起包内附「长书提醒」纪律块,要求旧角色/旧道具/旧伏笔一律先反查再动笔。
 """
 from __future__ import annotations
 
@@ -166,7 +169,9 @@ def main() -> int:
         print("用法: python context_pack.py <项目目录> N [--tail 800] [--budget 8000]\n\n"
               "组装第 N 章的分层上下文包(P0 章计划 / P1 上一章结尾+近三章摘要 / "
               "P2 骨架摘要+角色卡+伏笔提醒+世界规则+进度)。动笔前先读它,不要自己翻文件拼。\n"
-              "板块超预算自动折叠(骨架聚段/远期伏笔只列条数),末尾给预算表。")
+              "板块超预算自动折叠(骨架远段按 50 章聚合压缩剧情线/远期伏笔只列条数),末尾给预算表。\n"
+              "默认预算随章数自动上调 8000→16000(第 80 章起,可 --budget 覆盖);"
+              "第 100 章起包内含长书反查纪律提醒。")
         return 0
     if len(sys.argv) < 3:
         print("用法: python context_pack.py <项目目录> N [--tail 800] [--budget 8000]", file=sys.stderr)
@@ -176,7 +181,9 @@ def main() -> int:
     tail = 800
     if "--tail" in sys.argv:
         tail = int(sys.argv[sys.argv.index("--tail") + 1])
-    budget = 8000
+    # 默认预算随书长自动上调(第 80 章起每章 +50 字,16000 封顶):长书折叠被推迟,
+    # 且 scale 会同步放宽各板块软上限与骨架近段窗口;显式 --budget 仍完全覆盖。
+    budget = min(16000, 8000 + max(0, n - 80) * 50)
     if "--budget" in sys.argv:
         budget = int(sys.argv[sys.argv.index("--budget") + 1])
 
@@ -200,6 +207,8 @@ def main() -> int:
     # 预算收紧系数:--budget 低于基准 8000 时,各板块上限按比例收紧(不低于 30%)
     scale = max(0.3, budget / 8000)
     caps = {k: int(v * scale) for k, v in SECTION_CAPS.items()}
+    # 骨架近段保留节点数(每 10 章一个节点)随预算放宽:默认 5(≈最近 50 章),上限 10(≈最近 100 章)
+    near_n = max(5, min(10, int(5 * scale)))
 
     # --- 预算计量:每块先攒着,超限折叠,末尾统一出预算表 ---
     blocks: list[tuple[str, str]] = []
@@ -216,6 +225,12 @@ def main() -> int:
     total = sum(state.get("chapter_word_counts", {}).values())
     add("进度", f"\n## 进度\n- 已完成 {len(done)} / {state.get('target_chapters', '?')} 章,"
         f"累计约 {total} 字;本章目标 {wmin}-{wmax} 字;上下文预算 {budget} 字")
+
+    if n >= 100:
+        add("长书提醒", "\n## 长书提醒(第 100 章起;长书的反查纪律)\n"
+            f"- 本包只保证近 3 章摘要与最近 {near_n * 10} 章骨架全量,更早章节以压缩摘要/章号范围呈现。\n"
+            "- 涉及旧角色/旧道具/旧伏笔/旧地点:先 query_ledger.py 反查事实,再 search_corpus.py 取原文画面,不要凭印象写。\n"
+            f"- 默认预算已随章数自动上调至 {budget} 字(上限 16000);仍嫌折叠狠,运行加 --budget 20000+。")
 
     add("P0 本章计划", "\n## P0 本章计划\n```markdown\n" + read_text(plan_file).strip() + "\n```")
 
@@ -289,8 +304,11 @@ def main() -> int:
         summary_lines.append("- (尚无章节分析)")
     add("P0 前情摘要(近3章)", "\n## P0 前情摘要(近 3 章)\n" + "\n".join(summary_lines))
 
-    # 故事骨架:每 10 章一条;超过软上限则分三级降级:
-    #   1) 砍摘要留标题 2) 近段保留全量、远段每 50 章聚成一行 3) 只给反查提示
+    # 故事骨架:每 10 章一条;超过软上限则折叠:
+    #   - 近段保留全量,节点数随预算放宽(默认 5 个 ≈ 最近 50 章,大预算最多 10 个 ≈ 100 章)
+    #   - 远段按 50 章聚成一个渐进摘要(每节点取摘要前 24 字拼接,桶内 ≤150 字)——
+    #     只给章号不给内容会让模型"知道有这章但不知道讲了什么",渐进摘要让它能判断
+    #     该不该反查;折叠处仍留 query_ledger 提示
     skeleton_full = []
     for k in range(10, n, 10):
         ap = analysis_path(project, k)
@@ -302,21 +320,25 @@ def main() -> int:
         if count_words(text) <= caps["P0 故事骨架"]:
             add("P0 故事骨架", "\n## P0 故事骨架(每 10 章,防忘记开头)\n" + text)
         else:
-            # 远段聚合成卷段,近段(最近 5 个节点)保完整
-            near = skeleton_full[-5:]
+            # 近段保留全量,远段按 50 章聚合压缩剧情线
+            near = skeleton_full[-near_n:]
             far = skeleton_full[:-len(near)]
             lines = []
             if far:
-                groups: dict[int, list[int]] = {}
+                groups: dict[int, list[tuple[int, str]]] = {}
                 for k, t, s in far:
-                    groups.setdefault((k - 1) // 50, []).append(k)
-                for g, ks in sorted(groups.items()):
+                    frag = (s[:24] or t).strip() + ("…" if len(s) > 24 else "")
+                    groups.setdefault((k - 1) // 50, []).append((k, frag))
+                for g, items in sorted(groups.items()):
                     spans = f"第 {g*50+1}-{(g+1)*50} 章"
-                    lines.append(f"- {spans}:({len(ks)} 个骨架节点,章号 {','.join(map(str, ks))})"
+                    bucket = "、".join(frag for _, frag in items)
+                    if count_words(bucket) > 150:
+                        bucket = bucket[:150] + "…"
+                    lines.append(f"- {spans}:{bucket}(章号 {','.join(str(k) for k, _ in items)})"
                                  f" —— 细节用 query_ledger.py -k 反查")
             for k, t, s in near:
                 lines.append(f"- 第 {k} 章《{t}》:{s}…")
-            lines.append("- (已折叠:远段骨架只留范围,写到旧情节时查 analysis/ 或 query_ledger)")
+            lines.append("- (已折叠:远段骨架只留压缩摘要,写到旧情节时查 analysis/ 或 query_ledger)")
             folded.append("P0 故事骨架")
             add("P0 故事骨架", "\n## P0 故事骨架(每 10 章,防忘记开头)\n" + "\n".join(lines))
 
