@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="ltitle ldesc">
+  <title id="ltitle">一章一循环:六步闸门</title>
+  <desc id="ldesc">六个环节首尾相接:取上下文(脚本组装分层上下文包)→写正文(LLM 创作)→机械自检(脚本扫描 AI 味与台账一致性)→独立盲审(未参与写作的 subagent 打分)→分析回写(脚本落台账)→闸门提交(六项契约齐才 git commit)。中间三步各有确定性/模型分工标注。</desc>
+
+  <rect width="1200" height="360" rx="26" fill="#151a22"/>
+  <rect x="1.5" y="1.5" width="1197" height="357" rx="25" fill="none" stroke="#333c4a" stroke-width="1.5"/>
+
+  <text x="60" y="58" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-weight="700" font-size="30" fill="#ece7da">一章一循环 · 六步闸门</text>
+  <text x="60" y="88" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#8a93a2">脚本管机械(①③⑤) · 模型管创作(②④) · 缺一不算入库</text>
+
+  <!-- 六节点环形带:2行x3列的流水线 + 回环箭头 -->
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif">
+    <!-- 第一行 -->
+    <g transform="translate(60 120)">
+      <rect width="300" height="88" rx="14" fill="#1d2430" stroke="#c2452d" stroke-width="2"/>
+      <text x="18" y="34" font-weight="700" font-size="22" fill="#ece7da">① 取上下文</text>
+      <text x="18" y="62" font-size="19" fill="#aab3c1">脚本组装分层上下文包</text>
+      <text x="18" y="80" font-family="ui-monospace, Menlo, monospace" font-size="15" fill="#7d8694">context_pack.py</text>
+    </g>
+    <g transform="translate(420 120)">
+      <rect width="300" height="88" rx="14" fill="#1d2430" stroke="#333c4a"/>
+      <text x="18" y="34" font-weight="700" font-size="22" fill="#ece7da">② 写正文</text>
+      <text x="18" y="62" font-size="19" fill="#aab3c1">模型按章计划创作</text>
+      <text x="18" y="80" font-family="ui-monospace, Menlo, monospace" font-size="15" fill="#7d8694">chapters/NNN.md</text>
+    </g>
+    <g transform="translate(780 120)">
+      <rect width="300" height="88" rx="14" fill="#1d2430" stroke="#c2452d" stroke-width="2"/>
+      <text x="18" y="34" font-weight="700" font-size="22" fill="#ece7da">③ 机械自检</text>
+      <text x="18" y="62" font-size="19" fill="#aab3c1">AI 味 / 台账 / 规则扫描</text>
+      <text x="18" y="80" font-family="ui-monospace, Menlo, monospace" font-size="15" fill="#7d8694">check_ledger · style_stats · scan</text>
+    </g>
+    <!-- 第二行(反向流动) -->
+    <g transform="translate(780 244)">
+      <rect width="300" height="88" rx="14" fill="#1d2430" stroke="#333c4a"/>
+      <text x="18" y="34" font-weight="700" font-size="22" fill="#ece7da">④ 独立盲审</text>
+      <text x="18" y="62" font-size="19" fill="#aab3c1">未参与写作的 subagent</text>
+      <text x="18" y="80" font-family="ui-monospace, Menlo, monospace" font-size="15" fill="#7d8694">reviews/NNN.md ≥80</text>
+    </g>
+    <g transform="translate(420 244)">
+      <rect width="300" height="88" rx="14" fill="#1d2430" stroke="#c2452d" stroke-width="2"/>
+      <text x="18" y="34" font-weight="700" font-size="22" fill="#ece7da">⑤ 分析回写</text>
+      <text x="18" y="62" font-size="19" fill="#aab3c1">脚本落账,禁手改台账</text>
+      <text x="18" y="80" font-family="ui-monospace, Menlo, monospace" font-size="15" fill="#7d8694">apply_analysis.py</text>
+    </g>
+    <g transform="translate(60 244)">
+      <rect width="300" height="88" rx="14" fill="#202a2a" stroke="#c2452d" stroke-width="2"/>
+      <text x="18" y="34" font-weight="700" font-size="22" fill="#ece7da">⑥ 闸门提交</text>
+      <text x="18" y="62" font-size="19" fill="#aab3c1">六项契约齐 → git commit</text>
+      <text x="18" y="80" font-family="ui-monospace, Menlo, monospace" font-size="15" fill="#c98b7c">一章一提交 · 防丢稿</text>
+    </g>
+  </g>
+
+  <!-- 流线:①→②→③→(下)④→⑤→⑥→回① -->
+  <g stroke="#5b6675" stroke-width="2.5" fill="none">
+    <path d="M360 164 H420" marker-end="url(#arw)"/>
+    <path d="M720 164 H780" marker-end="url(#arw)"/>
+    <path d="M930 208 V244" marker-end="url(#arw)"/>
+    <path d="M780 288 H720" marker-end="url(#arw)"/>
+    <path d="M420 288 H360" marker-end="url(#arw)"/>
+    <path d="M210 244 V208" marker-end="url(#arw)"/>
+  </g>
+  <defs>
+    <marker id="arw" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L8,4.5 L0,9 z" fill="#5b6675"/>
+    </marker>
+  </defs>
+</svg>

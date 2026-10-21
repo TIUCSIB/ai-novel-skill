@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400" role="img" aria-labelledby="htitle hdesc">
+  <title id="htitle">ai-novel — AI 长篇小说创作工作流</title>
+  <desc id="hdesc">左侧为项目名称与一句话价值：文件台账管事实、确定性脚本管校验、AI 编码助手管创作；右侧为运行中的台账样本：伏笔提醒、角色状态、章节入库记录，上盖一枚朱红印章。</desc>
+
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#faf6ec"/>
+      <stop offset="1" stop-color="#f0ead8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- canvas: 墨色底,自带背景以兼容 GitHub 明暗主题 -->
+  <rect width="1200" height="400" rx="26" fill="#151a22"/>
+  <!-- 细边:像账本封皮的压线 -->
+  <rect x="1.5" y="1.5" width="1197" height="397" rx="25" fill="none" stroke="#333c4a" stroke-width="1.5"/>
+
+  <!-- 左:标题区 -->
+  <g transform="translate(64 60)">
+    <text x="0" y="0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" fill="#8a93a2" letter-spacing="3">AGENT SKILL · 中文网长小说创作工程</text>
+
+    <text x="0" y="66" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-weight="700" font-size="64" fill="#ece7da">ai-novel</text>
+    <!-- 项目母题:印章朱色下划块 -->
+    <rect x="6" y="80" width="128" height="8" rx="2" fill="#c2452d"/>
+
+    <text x="0" y="140" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="27" fill="#ece7da">写得完 · 写得对 · 写得像人</text>
+
+    <text x="0" y="192" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="21" fill="#aab3c1">台账管事实,脚本管校验,你已有的 AI 编码助手管创作。</text>
+    <text x="0" y="224" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="21" fill="#aab3c1">从立项、扫榜、拆文到逐章循环与成书导出,一条工作流。</text>
+
+    <g transform="translate(0 266)">
+      <text x="0" y="0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#7d8694">纯标准库 Python · 无需 API key · MIT · 39 项回归</text>
+    </g>
+  </g>
+
+  <!-- 右:台账样本卡(项目原生物料) -->
+  <g transform="translate(648 56)">
+    <!-- 卡片投影,轻 -->
+    <rect x="10" y="12" width="480" height="292" rx="16" fill="#0b0e13" opacity="0.55"/>
+    <rect x="0" y="0" width="480" height="292" rx="16" fill="url(#paper)" stroke="#d8cfb8"/>
+    <!-- 纸面竖格线:账栏 -->
+    <g stroke="#d9d0ba" stroke-width="1">
+      <line x1="46" y1="52" x2="46" y2="276"/>
+      <line x1="90" y1="52" x2="90" y2="276"/>
+    </g>
+    <!-- 红头:台账批注头 -->
+    <rect x="0" y="0" width="480" height="44" rx="16" fill="#eee6cd"/>
+    <rect x="0" y="30" width="480" height="14" fill="#eee6cd"/>
+    <line x1="14" y1="44" x2="466" y2="44" stroke="#c9bf9f"/>
+    <text x="20" y="29" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#8a7a4e">ledger/ · 第 28 章 对账</text>
+
+    <!-- 行 1:伏笔提醒(母题:临期伏笔) -->
+    <g transform="translate(20 74)" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="20" fill="#4d4634">
+      <text x="70" y="0">伏笔「青铜铃」</text>
+      <text x="70" y="26" font-family="ui-monospace, Menlo, monospace" font-size="17" fill="#a0432c">planted→ch.23 未回收 ⚠ 临期</text>
+    </g>
+
+    <!-- 行 2:角色状态 -->
+    <g transform="translate(20 150)" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="20" fill="#4d4634">
+      <text x="70" y="0">沈拾遗 · 左臂箭伤</text>
+      <text x="70" y="26" font-family="ui-monospace, Menlo, monospace" font-size="17" fill="#8a7a4e">第 3 章入账 · 近 2 章未提及</text>
+    </g>
+
+    <!-- 行 3:入库记录(朱印盖在这) -->
+    <g transform="translate(20 226)" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="20" fill="#4d4634">
+      <text x="70" y="0">第 28 章 「盐引」</text>
+      <text x="70" y="26" font-family="ui-monospace, Menlo, monospace" font-size="17" fill="#8a7a4e">盲审 84 · 台账 0 ERROR</text>
+    </g>
+
+    <!-- 印章:朱红方章,微旋转,盖在右下角 -->
+    <g transform="translate(350 202) rotate(-7)">
+      <rect x="0" y="0" width="92" height="92" rx="10" fill="none" stroke="#c2452d" stroke-width="6"/>
+      <text x="46" y="42" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, -apple-system, sans-serif" font-weight="700" font-size="30" fill="#c2452d">闸门</text>
+      <text x="46" y="74" text-anchor="middle" font-family="PingFang SC, Microsoft YaHei, -apple-system, sans-serif" font-weight="700" font-size="30" fill="#c2452d">入库</text>
+    </g>
+    <!-- 栏线行号(账栏序号,母题点缀) -->
+    <g font-family="ui-monospace, Menlo, monospace" font-size="16" fill="#b3a883">
+      <text x="16" y="74">01</text>
+      <text x="16" y="150">02</text>
+      <text x="16" y="226">03</text>
+    </g>
+  </g>
+</svg>
