@@ -4,7 +4,7 @@
 
 # ai-novel — AI 长篇小说创作工作流（Agent Skill）
 
-一套让 AI **写得完、写得对、写得像人**的长篇小说创作体系。以**文件台账**（角色 / 伏笔 / 时间线 / 组织 / 因果）为唯一事实源，用**确定性 Python 脚本**管事实，用**你已有的 AI 编码助手**管创作，覆盖从扫榜选题到成书导出的全流程。
+一套让 AI **写得完、写得对、写得像人**的长篇小说创作体系。以**文件台账**（角色 / 伏笔 / 时间线 / 组织 / 因果）为唯一事实源，用**确定性 Python 脚本**管事实，用**你已有的 AI 编码助手**管创作，覆盖从立项到成书的全流程。
 
 不是网页应用，不需要 API key，不绑定任何模型 —— 它是一个 **Agent Skill**：装进支持 [Agent Skills](https://agentskills.io) 规范的客户端，对 AI 说人话就能用。
 
@@ -26,7 +26,7 @@ AI 写长篇的经典死法：**写到 50 章让 3 章前死掉的人复活、�
 4. **去 AI 味分两层**：**负向拦截**（159 条分级规则库 + 句式密度闸门）除掉"看得见的 AI 味"；**正向人味意图**（非情节功能细节 / 对话失败 / 未闭合线头 / 主角代价，按章功能推荐、按弧规划分布）除掉"太干净" —— 角色永不失误、对话永远成功的书，比任何词表都更暴露 AI；反过来，为凑配额机械加戏同样是 AI 味。
 5. **人机闸门**：立项、大纲、每章默认等你确认；说"连写 10 章"就自动推进，每 5 章汇报一次。
 
-**实测背书**：全流程在 28 章 / 13 万字真实项目上跑通并反复校准，期间发现的真问题都固化成了机制 —— 例如"局部自检 = 存量盲区"（自检只扫最近两章，全书 145 处黑名单命中无人看见）、"绝对阈值永不触发"（中文长篇两两相似度峰值实测仅 12%，固定阈值 30% 形同虚设，改为按本书基线自动定标）、"黑名单会被改写法绕过"（禁掉"嘴角勾起"就变成"勾起一抹"，故必须有句式层检测）。章节循环与干预分诊另经**隔离会话行为回归**验证（独立 agent 实走完整流程逐步审计）。回归测试 39 例，`python tests/run_tests.py` 约 10 秒。
+**实测背书**：全流程在 28 章 / 13 万字真实项目上跑通并反复校准，期间发现的真问题都固化成了机制 —— 例如"局部自检 = 存量盲区"（自检只扫最近两章，全书 145 处黑名单命中无人看见）、"绝对阈值永不触发"（中文长篇两两相似度峰值实测仅 12%，固定阈值 30% 形同虚设，改为按本书基线自动定标）、"黑名单会被改写法绕过"（禁掉"嘴角勾起"就变成"勾起一抹"，故必须有句式层检测）。章节循环与干预分诊另经**隔离会话行为回归**验证（独立 agent 实走完整流程逐步审计）。回归测试 37 例，`python tests/run_tests.py` 约 10 秒。
 
 ## 快速上手
 
@@ -45,7 +45,7 @@ cp -r ai-novel-skill ~/.claude/skills/ai-novel
 
 Windows PowerShell 用 `Copy-Item -Recurse ai-novel-skill $HOME\.agents\skills\ai-novel`。
 
-装完自检（应输出 39 个 OK），然后**开一个全新会话**（技能触发依赖新会话加载）：
+装完自检（应输出 37 个 OK），然后**开一个全新会话**（技能触发依赖新会话加载）：
 
 ```bash
 python ~/.agents/skills/ai-novel/tests/run_tests.py
@@ -53,15 +53,7 @@ python ~/.agents/skills/ai-novel/tests/run_tests.py
 
 ## 使用
 
-三种入口，全部汇到同一工作流 —— 不想记命令就说人话：
-
-| 入口 | 例子 |
-|---|---|
-| **说人话**（推荐） | "帮我起一本玄幻小说" / "长篇什么题材火" / "写第 3 章" |
-| **`/ai-novel` 带意图** | `/ai-novel 扫榜` · `/ai-novel 拆书` · `/ai-novel 写第 3 章` · `/ai-novel 检查一致性` |
-| **真 slash 命令**（可选装路由 skill） | `/ai-novel-scan` 扫榜 · `/ai-novel-teardown` 拆书 |
-
-> 路由 skill 是命令入口的便利层，可选：仓库 `routers/` 下的 `ai-novel-scan/`、`ai-novel-teardown/` 两个目录，拷进技能目录（保持目录名）即可注册出 `/ai-novel-scan`、`/ai-novel-teardown` 命令；不装也完全不影响使用，前两种入口已够用。
+不需要记命令，说人话即可（技能靠语义触发）：
 
 **第一次开书**，直接说：
 
@@ -69,7 +61,7 @@ python ~/.agents/skills/ai-novel/tests/run_tests.py
 帮我起一本玄幻小说，主角是个能用量子力学解构功法的药铺学徒，计划写 120 章
 ```
 
-它会先走**市场输入**（可选）：扫榜选材（聚合你提供的或它抓取的榜单 → 2-3 个选题方向，每个带"能爆的原因"与可行性评级）→ 拆文对标（给它一本对标书原文，建机械索引 + 五阶段精读，回填验证选题假设）；然后进入立项：题材调研 → 与你确认创意和体量 → 建项目骨架 → 设定集 + 角色工作坊（配角 20 问 / 主角 80 问）→ 三层大纲（北极星 → 总纲 → 弧细纲）→ 等你拍板后开写第 1 章。
+它会走立项流程：题材调研 → 与你确认创意和体量 → 建项目骨架 → 设定集 + 角色工作坊（配角 20 问 / 主角 80 问）→ 三层大纲（北极星 → 总纲 → 弧细纲）→ 等你拍板后开写第 1 章。
 
 **之后常用的话**：
 
@@ -105,7 +97,6 @@ python ~/.agents/skills/ai-novel/tests/run_tests.py
 
 | 板块 | 你得到什么 |
 |---|---|
-| 市场输入 | **扫榜选材**：多平台榜单聚合（题材热度 / 趋势 / 标签 / 书名模式），数据源三级——用户粘贴 / agent 抓取 / 内置知识兜底，产出带可行性分级的选题决策；**拆文对标**：机械索引（切章 / 节奏统计 / 黄金三章）+ 五阶段精读，"能爆的原因"先作假设、拆文回填验证 |
 | 立项与设定 | 题材调研工作流；世界观 / 硬性规则 / 力量矩阵 / 概念词典模板；角色工作坊（配角 20 问、主角 80 问） |
 | 大纲 | 立意北极星（防主题漂移）→ 总纲 → 卷/弧双层滚动细纲（13 种节奏弧模板）→ 章计划（含信息控制四字段：读者已知 / 主角已知 / 必须隐藏 / 可暗示） |
 | 章节循环 | 分层上下文包（长书自动预算折叠，含**相关旧章四维推荐**与 **BM25 细节召回**）；机械自检三件套；七维审校 + 反通胀校准 + 独立 subagent 盲审；分析回写台账（重写幂等 + **润色护栏**防"改稿=删稿"）；一章一 commit；**语言落地**（方言写风味不写口音、热梗按人物世代发放、叙述词汇不得越过视角角色）；**知识配额**（科技术语密度与机制复述机检——防"检测全绿但读着像科普文"） |
@@ -116,14 +107,12 @@ python ~/.agents/skills/ai-novel/tests/run_tests.py
 
 ## 脚本单独使用
 
-17 个脚本均可 `--help`。几个值得手动跑的：
+15 个脚本均可 `--help`。几个值得手动跑的：
 
 ```bash
 S=~/.agents/skills/ai-novel/scripts
 
 python $S/init_project.py --dir "我的书" --title "我的书" --genre 玄幻 --chapters 100 --words 2000-3000
-python $S/scan_rank.py    "扫榜目录" --out 扫榜聚合.md        # 榜单聚合(格式兼容 oh-story 采集脚本)
-python $S/teardown.py     "对标书.txt" --book 书名            # 拆书机械索引(GBK 自动转码)
 python $S/context_pack.py  "我的书" 1        # 第 1 章上下文包(带预算表)
 python $S/check_ledger.py  "我的书"          # 台账一致性
 python $S/style_stats.py   "我的书" --all    # 全书文风体检(概览表)
@@ -145,12 +134,10 @@ python $S/export.py        "我的书" --format epub
 ├── SKILL.md              # 工作流主文件(agent 的入口与调度表)
 ├── README.md / CHANGELOG.md / LICENSE
 ├── assets/readme/        # 本页视觉(hero.svg / loop.svg)
-├── references/           # 20 份按需加载的参考文档
+├── references/           # 18 份按需加载的参考文档
 │   ├── ledger-schema.md      # 台账与章计划/章分析的字段定义
 │   ├── rules.json            # 159 条分级去 AI 味规则库(数据,regex 带正反例)
 │   ├── ai-taste.md           # AI 味对比例句库 + 密度警戒线 + 修订工序
-│   ├── market-scan.md        # 扫榜选材与选题决策(数据源三级 / 五阶段 / 选题四步)
-│   ├── teardown-deep.md      # 拆文对标(机械索引 + 五阶段精读 + 可偷清单)
 │   ├── arc-library.md        # 13 种节奏弧模板
 │   ├── arc-audit.md          # 弧末/卷末冷却审计九步全套
 │   ├── steering.md           # 中途干预分诊表 + 波及面查法 + 铁律
@@ -159,7 +146,7 @@ python $S/export.py        "我的书" --format epub
 │   ├── folk-speech.md        # 语言落地：方言风味 / 热梗时间戳 / 叙述词汇上限
 │   ├── review-rubric.md      # 七维审校细则 + 盲审 subagent 派发模板
 │   └── craft / style-guide / rules / character-workshop / reader-sim / reader-clarity / research-material / style-profile / model-routing
-├── scripts/              # 17 个纯标准库 Python 脚本
+├── scripts/              # 15 个纯标准库 Python 脚本
 ├── tests/run_tests.py    # 可执行回归(改版必跑)
 └── evals/REGRESSION.md   # 回归清单(含需真实会话的行为类用例)
 ```
@@ -171,7 +158,6 @@ python $S/export.py        "我的书" --format epub
 - **规则库不是圣经**：159 条规则的分级经真实书稿校准，但不同题材词频不同（修仙书"瞳孔"天然多、科技书"仿佛"本就罕见）。新书前 10 章跑一次 `calibrate`，让书反过来校准规则。
 - **中文网文语境优先**：爽点节奏 / 章末钩子 / 境界体系 / 弧模板都按网文连载习惯设计。写传统长篇或英文小说时，`arc-library` 与部分节奏规则可自行裁剪，台账与检测机制通用。
 - **上下文成本随书增长**：已做预算折叠，但每章循环仍会产生可观的 token 消耗。`references/model-routing.md` 给了任务分档建议（盲审/拆书提取可降档，正文创作不要省）。
-- **扫榜不内置爬虫**：起点/番茄反爬强，本技能坚持零依赖，榜单数据由你粘贴、agent 用宿主联网能力抓取、或按内置知识降级（会明确标注"未经实时校验"）。榜单文件格式兼容 [oh-story](https://github.com/zenstory-ai/oh-story-claudecode) 的采集脚本，需要脚本级采集可直接换用。
 - 本工具产出**不会自动规避平台审核**；发布前请自行确认内容合规（`bible/rules.md` 的"禁写事项"是给你自己立的红线，需要人工填写）。
 
 ## 致谢
@@ -183,7 +169,6 @@ python $S/export.py        "我的书" --format epub
 - [MuMuAINovel](https://github.com/xiamuceer-j/MuMuAINovel)（GPL-3.0）— 禁用词表与"三遍法"改写工序
 - [ainovel-cli](https://github.com/voocel/ainovel-cli)（Apache-2.0）— 全书句式统计（stylestat）与"代码管事实、LLM 管语义"的哲学
 - [neuro-book](https://github.com/notnotype/neuro-book)（AGPL-3.0）— llmlint 规则模型（分级/分类/正反例）与世界状态事件溯源
-- [oh-story-claudecode](https://github.com/zenstory-ai/oh-story-claudecode)（MIT）— 扫榜→拆文→写作的流水线分工、选题"能爆的原因先作假设再验证"闭环与榜单文件格式
 
 本项目自身以 **MIT** 发布，与上述许可证均兼容（未衍生其代码）。
 

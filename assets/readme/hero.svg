@@ -25,10 +25,10 @@
     <text x="0" y="140" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="27" fill="#ece7da">写得完 · 写得对 · 写得像人</text>
 
     <text x="0" y="192" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="21" fill="#aab3c1">台账管事实,脚本管校验,你已有的 AI 编码助手管创作。</text>
-    <text x="0" y="224" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="21" fill="#aab3c1">从立项、扫榜、拆文到逐章循环与成书导出,一条工作流。</text>
+    <text x="0" y="224" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif" font-size="21" fill="#aab3c1">从立项、大纲、逐章循环到成书导出,一条工作流。</text>
 
     <g transform="translate(0 266)">
-      <text x="0" y="0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#7d8694">纯标准库 Python · 无需 API key · MIT · 39 项回归</text>
+      <text x="0" y="0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#7d8694">纯标准库 Python · 无需 API key · MIT · 37 项回归</text>
     </g>
   </g>
 

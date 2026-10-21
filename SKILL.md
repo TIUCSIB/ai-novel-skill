@@ -55,32 +55,9 @@ description: AI 长篇小说创作工作流:以文件台账(角色/伏笔/时间
 
 章节文件名固定三位零填充(`001.md`、`012.md`),正文首行 `# 第N章 标题`。
 
-## 快速命令入口
-
-本技能是单一工作流,但有三种等价入口,**都能直达下表流程**:
-
-- **真 slash 命令**:`/ai-novel-scan`(扫榜)、`/ai-novel-teardown`(拆书)—— 两个轻量路由 skill 会把请求转回本流程;
-- **带参数调用**:`/ai-novel 扫榜`、`/ai-novel 拆书`、`/ai-novel 写第 3 章` —— 把斜杠后的文字当意图传入,按下表路由;
-- **自然语言**:下表"用户说"栏的说法直接说即可。
-
-| 用户说 | 进入 | 依据 |
-|---|---|---|
-| 扫榜/什么题材火/起点番茄排行/选题 | **扫榜选材**(阶段 0 前置) | `references/market-scan.md` + `scripts/scan_rank.py` |
-| 拆书/拆这本/对标学习/分析这本书 | **拆文对标** | `references/teardown-deep.md` + `scripts/teardown.py` |
-| 立项/开书/建项目 | 阶段 0 | 本文档「阶段 0」 |
-| 写大纲/立北极星 | 阶段 1 | 本文档「阶段 1」 |
-| 写第N章/续写 | 阶段 2 章节循环 | `loop_status.py` 导航 |
-| 检查一致性/对账 | `check_ledger.py` | 本文档「③ 机械自检」 |
-| 去AI味/太AI | `style_stats` + `taste_audit` + `ai-taste.md` | 本文档「③」 |
-| 接手旧稿/导入 | 拆书导入 | `references/import-existing.md` |
-| 导出/成书 | 阶段 3 | `export.py` |
-
-意图明确就直接调用对应 reference/脚本并执行;匹配不上时只问缺的那一项(如没说平台就问平台)。**入口只改变"怎么进来",不改变流程本身 —— 从 /ai-novel-scan 进来的也要走完 market-scan.md 的五个 Phase,不许抄近路。**
-
 ## 阶段 0:立项
 
-0. **市场输入(可选但推荐,尤其新书)**:用户没定死方向时,先按 `references/market-scan.md` 走一轮**扫榜选材**(数据源三级:用户提供榜单 → agent 联网抓取 → 内置知识兜底),`python <技能目录>/scripts/scan_rank.py "<扫榜目录>" --out "<扫榜目录>/扫榜聚合.md"` 聚合,产出 `扫榜/{YYYYMMDD}/选题决策.md`(2-3 个方向,每个含"能爆的原因(待拆文验证)"、差异化、可行性与**建议拆的对标书**)。用户已给定方向/有对标书原文要学时,改走 `references/teardown-deep.md` **拆文对标**(`teardown.py` 建机械索引 → 五阶段精读 → `material/teardown-{书名}.md` → 回填选题决策)。扫榜结论与拆书"可偷清单"反哺下一步的题材盘点与 compass 差异化定位。
-1. **题材调研**:按 `references/research-material.md` 做一轮题材盘点(同类头部、套路与雷点),输出 `material/genre-research.md`;有 0 步产出就并入它。**没有 0 步的市场数据时,信息不足就诚实说"这里我不确定"让用户补,不要编市场结论**。在此基础上与用户确认**题材类型、一句话核心创意、目标章数、每章字数、叙事视角、文风偏好**。用户只有模糊想法时,给 3 个差异化方向供选择,不要自作主张定死。
+1. **题材调研先行**:按 `references/research-material.md` 做一轮题材盘点(同类头部、套路与雷点),输出 `material/genre-research.md`;在此基础上与用户确认**题材类型、一句话核心创意、目标章数、每章字数、叙事视角、文风偏好**。用户只有模糊想法时,给 3 个差异化方向供选择,不要自作主张定死。
 2. 建项目骨架(脚本会创建全部目录、模板文件和空账本,并自动 git init):
    ```
    python <技能目录>/scripts/init_project.py --dir "<书名>" --title "书名" --genre "玄幻" --chapters 100 --words 2000-3000
@@ -202,8 +179,6 @@ python <技能目录>/scripts/apply_analysis.py "<项目目录>" N
 | `scripts/rebuild_state.py <项目>` | 角色状态重放校准 + `--at N` 时点重建(事件溯源);弧末校准用 |
 | `scripts/snapshot.py <项目>` | 生成人类可读的全书快照(角色状态/伏笔/进度),每弧收官或用户要求时 |
 | `scripts/export.py <项目> --format txt\|md\|epub` | 完本或用户要求导出时(EPUB 可直接导入阅读器) |
-| `scripts/scan_rank.py <榜单目录/文件>... [--out 扫榜聚合.md] [--sample 词] [--prev 上期.json]` | **阶段 0 扫榜**:聚合多份榜单(格式兼容 oh-story 采集脚本),出题材热度表+趋势;主会话只读这张表 |
-| `scripts/teardown.py <原文> --book 书名 [--outdir 拆文库/书名]` | **阶段 0 拆文**:对标书机械索引(编码归一+切章剔目录+节奏.csv+快速预览.md),定性拆解按 `teardown-deep.md` 续 |
 
 所有脚本均为纯标准库 Python(Windows/macOS/Linux 通用),`python <技能目录>/scripts/<脚本> --help` 查看参数。
 
@@ -224,8 +199,6 @@ python <技能目录>/scripts/apply_analysis.py "<项目目录>" N
 - `references/craft.md` — 创作方法论:章节结构、爽点节奏、钩子库、MRU(含脑内层的碎念写法)、对话区分度、伏笔节奏、因果纪律、**知识配额(§10 术语腔:每章≤3处拆解、禁机制复述、反均匀、叫名字≠画场景)**。**计划和动笔时读。**
 - `references/character-workshop.md` — 角色工作坊问题阶梯(配角 20 问 / 主要角色 80 问)。**立项建主角团、major 配角登场前用。**
 - `references/research-material.md` — 题材调研、素材库、拆书三项输入工作流。**开题前与每弧规划前用。**
-- `references/market-scan.md` — 扫榜选材与选题决策:数据源三级(用户提供/agent 抓取/内置知识)、榜单格式(兼容 oh-story 采集口径)、五阶段流程、选题四步与可行性分级。**用户问"写什么火/帮我选题"时先读。**
-- `references/teardown-deep.md` — 拆文对标:机械索引(teardown.py)+ 五阶段定性精读 + 可偷清单 + 选题回填。**要拆对标书、验证"能爆的原因"时读。**
 - `references/style-profile.md` — 仿写画像:从样例文本提取文风特征。**用户提供文风样例时用。**
 - `references/reader-sim.md` — 模拟读者 beta 试读:弃书点与追读欲望报告。**每弧收官与完本终审时用。**
 - `references/model-routing.md` — 任务级模型路由建议(什么任务用什么档位的模型,如何省成本)。**派 subagent 与配置时参考。**
