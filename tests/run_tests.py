@@ -1268,6 +1268,55 @@ class Regression(unittest.TestCase):
         self.assertIn("节奏停滞", p2.stdout)
         self.assertIn("高潮疲劳", p2.stdout)
 
+    # ---------- t43: 计划↔分析比对只查本次范围,缺 type 聚合成一条 ----------
+    def test_t43_plan_diff_scoped_to_focus(self):
+        proj = self._fresh_project("focus")
+        base = json.loads(json.dumps(CH1_ANALYSIS))
+        for n in range(1, 6):
+            self._write_to(proj, f"chapters/{n:03d}.md", f"# 第{n}章 测试\n\n" + CH1_TEXT)
+            # 计划写"推进",分析写"过渡":每一章都漂移
+            self._write_to(proj, f"outline/chapter-{n:03d}.md",
+                           f"# 第{n}章 测试\n章节类型: 推进\n冲突值: 3\n"
+                           f"钩子DNA: 主角-发现-请帖-死人落款\n")
+            a = json.loads(json.dumps(base))
+            a["chapter"] = n
+            a["title"] = f"第{n}章 测试"
+            a["type"] = "过渡"
+            a["conflict"] = 4
+            a["hook_dna"] = "配角-逃亡-城门-追兵"
+            a["relationships"] = []
+            a["organizations"] = []
+            a["world_facts"] = []
+            a["foreshadow_ops"] = []
+            self._write_to(proj, f"analysis/{n:03d}.json", json.dumps(a, ensure_ascii=False))
+        # 标成已完成章:默认只详查最近两章(写作中的章则一律详查)
+        b0 = json.loads((proj / "book.json").read_text(encoding="utf-8"))
+        b0["completed_chapters"] = [1, 2, 3, 4, 5]
+        b0["current_chapter"] = 6
+        self._write_to(proj, "book.json", json.dumps(b0, ensure_ascii=False))
+        # 默认只看最近两章:历史章不重复刷屏
+        p = run("check_ledger.py", proj)
+        self.assertIn("第 5 章计划类型", p.stdout)
+        self.assertNotIn("第 1 章计划类型", p.stdout, "历史章的漂移不应每次重报")
+        self.assertNotIn("第 2 章计划类型", p.stdout)
+        # --all 覆盖全书
+        p_all = run("check_ledger.py", proj, "--all")
+        for n in range(1, 6):
+            self.assertIn(f"第 {n} 章计划类型", p_all.stdout)
+        # 缺 type 聚合成一条,而不是每章一条
+        b = json.loads((proj / "book.json").read_text(encoding="utf-8"))
+        b["schema_version"] = 2
+        self._write_to(proj, "book.json", json.dumps(b, ensure_ascii=False))
+        for n in range(1, 6):
+            f = proj / f"analysis/{n:03d}.json"
+            a = json.loads(f.read_text(encoding="utf-8"))
+            a.pop("type", None)
+            f.write_text(json.dumps(a, ensure_ascii=False), encoding="utf-8")
+        p_missing = run("check_ledger.py", proj)
+        self.assertEqual(p_missing.stdout.count("缺 analysis.type"), 1,
+                         "缺 type 应聚合成一条,不逐章刷屏")
+        self.assertIn("1、2、3、4、5", p_missing.stdout)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

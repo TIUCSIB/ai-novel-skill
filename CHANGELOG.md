@@ -11,7 +11,7 @@
 - **钩子 DNA(`hook_dna`)**:3-5 个结构词(如 `主角-发现-请帖-死人落款`)描述钩子的骨架而非措辞。计划 vs 分析 Jaccard <0.3 = 计划/成稿漂移;相邻章 Jaccard >0.8 = 同构;实际章末钩子对 DNA 词的覆盖率 <0.5 也警告。判据与示例见 `references/hooks.md` §五。
 - **schema v2**:新项目 `book.json` 写 `schema_version: 2`;旧项目不自动升级,缺 `type` 不报警。`init_project --force` 保留既有 `schema_version`。`check_ledger` 的章型/代价/DNA/Tier 检查全部为 WARN,不阻断既有流程。
 - **文档同步**:新增 `references/type-matrix.md`;更新 `ledger-schema.md`(字段/示例/timeline 类型)、`review-rubric.md`(按章型调整审校重点、四类机械预检、盲审模板)、`arc-audit.md`(第十一步:类型分布/张力曲线/Tier 配额/代价守恒,`--curve`)、`craft.md`(§11)、`hooks.md`(§五)、`init_project.py` 总纲模板(节奏配比)。
-- 回归:新增 t38-t42,覆盖类型/Tier/冲突校验、Tier 阈值与排序、analysis 结构非法不落盘、章型矩阵警告/得失账/DNA 漂移、类型与冲突连排只认真实相邻章号;全套 **42 例全绿**。实测中另修两处自测暴露的缺陷:`major: false` 被类型推断覆盖成"重大获得"、连续检测把隔章算成连排。
+- 回归:新增 t38-t43,覆盖类型/Tier/冲突校验、Tier 阈值与排序、analysis 结构非法不落盘、章型矩阵警告/得失账/DNA 漂移、类型与冲突连排只认真实相邻章号、计划↔分析比对的扫描范围;全套 **43 例全绿**。实测中另修三处自测暴露的缺陷:`major: false` 被类型推断覆盖成"重大获得"、连续检测把隔章算成连排、计划↔分析比对未受详查范围约束导致每章重报全书历史漂移。
 
 ## v3.11(2026-10-21)—— 撤回市场输入层(扫榜→拆文→立项)+ sync_skill 分叉检测修复
 

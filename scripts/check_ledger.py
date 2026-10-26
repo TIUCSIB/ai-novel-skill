@@ -341,17 +341,25 @@ def main() -> int:
 
     fo_by_id = {f.get("id"): f for f in fofs}
     schema_v2 = book.get("schema_version", 0) >= 2
+    # 缺 type 是"待补账"的项目级状态,聚合成一条;逐章报会在长书上刷屏
+    missing_type = [n for n in done if n in analyses and typed.get(n) is None]
+    if schema_v2 and missing_type:
+        head = "、".join(str(x) for x in missing_type[:6])
+        more = f" 等 {len(missing_type)} 章" if len(missing_type) > 6 else ""
+        W(f"已完成章缺 analysis.type:{head}{more} —— 补章节类型后才能按矩阵审校")
     for n in sorted(analyses):
         a = analyses[n]
         typ = typed.get(n)
         plan = plan_of(n)
+        # 计划↔分析的比对只对本次详查范围报:它们描述的是"这一章写偏没有",
+        # 而历史章的结论不会因为今天又跑了一次而改变(--all/弧末审计覆盖全书)。
+        if n not in focus:
+            continue
         ptyp = parse_plan_field(plan, "章节类型") if plan else None
         if ptyp and ptyp not in CHAPTER_TYPES:
             W(f"第 {n} 章计划章节类型「{ptyp}」不在枚举 {'/'.join(CHAPTER_TYPES)} 中")
         if ptyp and typ and ptyp != typ:
             W(f"第 {n} 章计划类型「{ptyp}」与分析 type「{typ}」不一致")
-        if schema_v2 and n in done and typ is None:
-            W(f"第 {n} 章已完成但 analysis 缺 type —— 补章节类型后才能按矩阵审校")
         conf = conflicts.get(n)
         pconf = parse_conflict(parse_plan_field(plan, "冲突值")) if plan else None
         if pconf is not None and conf is not None and pconf != conf:
@@ -362,7 +370,7 @@ def main() -> int:
             j = dna_jaccard(pdna, dna)
             if j < 0.3:
                 W(f"第 {n} 章钩子DNA漂移:计划「{pdna}」→ 分析「{dna}」(Jaccard {j:.2f})")
-        elif pdna and n in focus:
+        elif pdna:
             hook = a.get("hook") or ""
             tail = read_text(ch_path(project, n))[-400:] if ch_path(project, n).exists() else ""
             toks = dna_tokens(pdna)
@@ -371,8 +379,6 @@ def main() -> int:
                 W(f"第 {n} 章钩子DNA漂移:计划「{pdna}」在实际钩子/章末只出现 "
                   f"{hit}/{len(toks)} 个结构词")
 
-        if n not in focus:
-            continue
         if typ == "线索":
             if not (a.get("foreshadow_ops") or a.get("terms")):
                 W(f"第 {n} 章为线索章但无伏笔操作/术语首现 —— 本章的新问题从哪来?")
