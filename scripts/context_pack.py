@@ -20,8 +20,9 @@ import re
 import sys
 from pathlib import Path
 
-from _common import (analysis_path, ch_path, ch_file, count_words,
-                     force_utf8_stdio, load_json, plan_path, read_text)
+from _common import (CHAPTER_TYPES, analysis_path, ch_path, ch_file, count_words,
+                     dna_jaccard, force_utf8_stdio, load_json, parse_plan_field,
+                     plan_path, read_text, foreshadow_stale_limit, foreshadow_tier)
 
 try:  # 全文检索(BM25 细节召回);导入失败则本段静默跳过,不影响其余板块
     from search_corpus import bm25, load_chunks, snippet as _snip
@@ -74,20 +75,48 @@ def load_state(project: Path) -> dict:
     return load_json(project / "book.json")
 
 
-PLAN_FIELD = re.compile(r"^\s*(?:[-*+]\s+)?\*{0,2}([^:：*]{1,20}?)\*{0,2}\s*[:：]\s*(.*)$")
 _NAME_NOISE = re.compile(r"[（(][^）)]*[）)]\s*$")  # 老丹奴(cameo) → 老丹奴
 
-
-def parse_plan_field(plan_text: str, field: str) -> str | None:
-    """取章计划里某个字段的值,容忍 `- ` 列表前缀、`**加粗**`、全角/半角冒号。
-
-    schema 约定的是 `出场角色[:：]`,旧实现只认行首半角冒号 —— 换一种写法就静默丢角色卡。
-    """
-    for line in plan_text.splitlines():
-        m = PLAN_FIELD.match(line)
-        if m and m.group(1).strip().strip("*").strip() == field:
-            return m.group(2).strip()
-    return None
+# 章类型合同:写进上下文包,让模型动笔前就看到"本章必须/禁止/审校先看什么"。
+# 完整矩阵与类型配比见 references/type-matrix.md。
+TYPE_GUIDE = {
+    "推进": {
+        "must": "至少一个情节点改变局面(不可逆决定/新信息/新障碍)",
+        "forbid": "纯说明、原地打转、只换场景不换局面",
+        "review": "D3/D4",
+        "context": "当前弧目标 + 上一章 issues_next",
+    },
+    "高潮": {
+        "must": "冲突值 4-5 或钩子 L3+;至少一个不可逆后果/代价",
+        "forbid": "巧合解围、无代价胜利、连续高潮",
+        "review": "D1/D2/D3/D6",
+        "context": "力量矩阵 + 资源账 + 伏笔回收窗口",
+    },
+    "过渡": {
+        "must": "关系/世界/情绪至少一项变化,为下一章蓄势",
+        "forbid": "回收 Tier-1 主线伏笔、硬塞大冲突",
+        "review": "D3/D7",
+        "context": "人味意图 + 日常过渡弧模板",
+    },
+    "关系": {
+        "must": "至少一对关系发生变化或暴露新面,且用行动/对话演出来",
+        "forbid": "关系变化只靠旁白总结",
+        "review": "D2/D7",
+        "context": "双方 voice + 关系史 + 未闭合线头",
+    },
+    "线索": {
+        "must": "至少一个伏笔操作或术语首现;章末留下新问题",
+        "forbid": "一次解释完所有线索、调查完却没有新问题",
+        "review": "D5/D6",
+        "context": "伏笔 Tier + 术语卡 + 相关旧章",
+    },
+    "代价": {
+        "must": "一个具体损失(物质/关系/声誉/信念),且影响后续行动",
+        "forbid": "只受伤不损失、代价立即被补偿",
+        "review": "D2/D4/D7",
+        "context": "资源账 + 伤势 + 人味意图",
+    },
+}
 
 
 def parse_plan_characters(plan_text: str) -> list[str]:
@@ -109,35 +138,80 @@ def find_character(ledger: dict, name: str):
     return None
 
 
+def _fo_line(f: dict) -> str:
+    """伏笔条目一行摘要;Tier/scope/跨卷标签决定它在上下文包里的优先级。"""
+    tier = foreshadow_tier(f)
+    tags = []
+    if tier:
+        tags.append(f"T{tier}")
+    if f.get("scope"):
+        tags.append(str(f["scope"]))
+    if f.get("cross_volume"):
+        tags.append("跨卷")
+    line = f"{f['id']} {f['title']}"
+    if tags:
+        line += f" [{'/'.join(tags)}]"
+    line += f" — {f.get('description', '')} [状态:{f.get('status')}]"
+    if f.get("payoff_plan"):
+        line += f" | 回收计划:{f['payoff_plan']}"
+    return line
+
+
+def _stale_note(f: dict, n: int) -> str:
+    lt = f.get("last_touched")
+    if lt is None:
+        return ""
+    gap = n - lt
+    tier = foreshadow_tier(f)
+    limit = foreshadow_stale_limit(tier)
+    if gap <= limit:
+        return ""
+    if tier:
+        return f"(已 {gap} 章未推进,T{tier} 阈值 {limit},需回响)"
+    return f"(已 {gap} 章未推进,旧账阈值 {limit},注意回响)"
+
+
 def foreshadow_tiers(fo_data: dict, n: int) -> dict:
-    must, soon, later, plant_now, missed = [], [], [], [], []
+    """按"义务/临近/远期"分桶,桶内再按 Tier→期限排序。
+
+    优先级不是按台账顺序:Tier-1 主线即使期限还远,也应该先于一堆 T3 章级线索
+    出现在模型眼前。旧的 15 章休眠阈值只用于未标 Tier 的旧账。
+    """
+    buckets: dict[str, list[tuple[tuple, str]]] = {
+        "must": [], "soon": [], "later": [], "plant_now": [], "missed": [],
+    }
+
+    def add(bucket: str, line: str, sort_key: tuple) -> None:
+        buckets[bucket].append((sort_key, line))
+
     for f in fo_data.get("foreshadows", []):
         st = f.get("status")
         if st in ("resolved", "abandoned"):
             continue
-        line = f"{f['id']} {f['title']} — {f.get('description', '')} [状态:{st}]"
-        if f.get("payoff_plan"):
-            line += f" | 回收计划:{f['payoff_plan']}"
+        line = _fo_line(f)
+        tier = foreshadow_tier(f) or 9
+        dl = f.get("deadline_chapter")
         if st == "planned":
             pc = f.get("planned_chapter")
+            key = (tier, pc if pc is not None else 9999, f.get("id", ""))
             if pc is not None and pc < n:
-                missed.append(f"{line} | ⚠ 原计划第{pc}章埋入但未埋,本章补埋或改计划")
+                add("missed", f"{line} | ⚠ 原计划第{pc}章埋入但未埋,本章补埋或改计划", key)
             elif pc == n:
-                plant_now.append(line)
+                add("plant_now", line, key)
             else:
-                later.append(line + " | (已登记待埋)")
+                add("later", line + " | (已登记待埋)", key)
             continue
-        dl = f.get("deadline_chapter")
-        lt = f.get("last_touched")
-        stale = lt is not None and (n - lt) > 15
+        stale = _stale_note(f, n)
+        key = (tier, dl if dl is not None else 9999, f.get("id", ""))
         if dl is not None and dl <= n:
             tag = "已超期" if dl < n else "本章到期"
-            must.append(f"{line} | ⚠ {tag},必须本章回收")
+            add("must", f"{line} | ⚠ {tag},必须本章回收", key)
         elif dl is not None and dl <= n + 5:
-            soon.append(line + " | 尽快安排回收" + ("(已 15+ 章未推进,注意回响)" if stale else ""))
+            add("soon", line + " | 尽快安排回收" + stale, key)
         else:
-            later.append(line + " | 可铺垫,禁止在本章提前回收" + ("(已 15+ 章未推进)" if stale else ""))
-    return {"must": must, "soon": soon, "later": later, "plant_now": plant_now, "missed": missed}
+            add("later", line + " | 可铺垫,禁止在本章提前回收" + stale, key)
+    return {k: [line for _, line in sorted(v, key=lambda x: x[0])]
+            for k, v in buckets.items()}
 
 
 def fmt_character(c: dict, ledger: dict) -> str:
@@ -232,7 +306,60 @@ def main() -> int:
             "- 涉及旧角色/旧道具/旧伏笔/旧地点:先 query_ledger.py 反查事实,再 search_corpus.py 取原文画面,不要凭印象写。\n"
             f"- 默认预算已随章数自动上调至 {budget} 字(上限 16000);仍嫌折叠狠,运行加 --budget 20000+。")
 
-    add("P0 本章计划", "\n## P0 本章计划\n```markdown\n" + read_text(plan_file).strip() + "\n```")
+    plan_text = read_text(plan_file)
+    add("P0 本章计划", "\n## P0 本章计划\n```markdown\n" + plan_text.strip() + "\n```")
+
+    # --- 章节类型合同 / 冲突值 / 钩子 DNA ---
+    # 类型不是标签,是本章的戏剧任务合同。把"必须/禁止/审校重点"放到动笔前,
+    # 比写完再让审校扣分便宜得多;钩子 DNA 则用来防相邻章钩子同构。
+    plan_type = parse_plan_field(plan_text, "章节类型")
+    plan_conflict_raw = parse_plan_field(plan_text, "冲突值")
+    plan_dna = parse_plan_field(plan_text, "钩子DNA")
+    hook_line = parse_plan_field(plan_text, "章末钩子") or ""
+
+    def _conflict_value(raw: str | None) -> int | None:
+        if raw is None:
+            return None
+        m = re.search(r"(?<!\d)([1-5])(?!\d)", raw)
+        return int(m.group(1)) if m else None
+
+    plan_conflict = _conflict_value(plan_conflict_raw)
+    if plan_type or plan_conflict_raw or plan_dna:
+        type_lines: list[str] = []
+        if plan_type:
+            guide = TYPE_GUIDE.get(plan_type)
+            if guide:
+                type_lines.append(
+                    f"- 类型:{plan_type} —— 必须:{guide['must']};禁止:{guide['forbid']};"
+                    f"审校重点:{guide['review']};先读:{guide['context']}")
+            else:
+                type_lines.append(f"- ⚠ 章节类型「{plan_type}」不在枚举 {'/'.join(CHAPTER_TYPES)} 中")
+        if plan_conflict_raw:
+            if plan_conflict is None:
+                type_lines.append(f"- ⚠ 冲突值「{plan_conflict_raw}」无法解析,应为 1-5 整数")
+            else:
+                type_lines.append(f"- 冲突值:{plan_conflict}/5(1 日常 / 2 摩擦 / 3 明确转折 / 4 大战 / 5 卷峰)")
+        if plan_dna:
+            type_lines.append(f"- 钩子DNA:{plan_dna}(结构指纹,不是钩子文案)")
+            if n > 1:
+                prev_a = analysis_path(project, n - 1)
+                if prev_a.exists():
+                    prev_dna = load_json(prev_a).get("hook_dna")
+                    if prev_dna:
+                        j = dna_jaccard(plan_dna, prev_dna)
+                        if j > 0.8:
+                            type_lines.append(
+                                f"- ⚠ 与上一章钩子DNA高度同构(Jaccard {j:.2f});换主体/动作/对象/反转")
+        if plan_type == "线索":
+            ops = (parse_plan_field(plan_text, "伏笔操作") or "").strip()
+            term_line = (parse_plan_field(plan_text, "术语") or "").strip()
+            if not ops and not term_line:
+                type_lines.append("- ⚠ 线索章计划没有伏笔操作/术语首现 —— 本章的新问题从哪来?")
+        elif plan_type == "高潮" and plan_conflict is not None and plan_conflict < 4 \
+                and not re.search(r"L[3-5]", hook_line):
+            type_lines.append("- ⚠ 高潮章冲突值 <4 且钩子未标 L3+;补强度或降级为推进/过渡")
+        add("P0 本章类型提示", "\n## P0 本章类型提示(类型矩阵见 references/type-matrix.md)\n"
+            + "\n".join(type_lines))
 
     # --- 北极星:compass / 当前弧 / 文风 ---
     # 这三份此前只写在 SKILL 里让模型"自己记得",从没进过上下文包 —— 写到几十章后
@@ -352,8 +479,7 @@ def main() -> int:
     # --- 相关旧章四维推荐(借鉴 ainovel-cli buildRelatedChapters) ---
     # 维度:①本章计划伏笔的埋设章 ②久未出场但被计划/因果线牵动的角色 ③关键道具锚章
     #       ④开了线没接的 sets_up 出处章。排除最近 8 章(近章已有摘要/结尾),总闸 ≤6 条,每条带理由。
-    # ①-④ 推荐逻辑用的计划文本此处先读(后面 P1 角色卡还要用同一份)
-    plan_text = read_text(plan_file)
+    # ①-④ 推荐逻辑复用前面已读入的 plan_text(后面 P1 角色卡还要用同一份)
     plan_chars_all = parse_plan_characters(plan_text)
     related: list[list] = []  # [章号, 理由(可多锚点合并)]
 
@@ -503,6 +629,14 @@ def main() -> int:
     duty_text = "\n".join(duty)
     room = caps["P2 伏笔提醒"] - count_words(duty_text) - 120
     head = ["## P2 伏笔提醒"]
+    active_fofs = [f for f in fo_data.get("foreshadows", [])
+                   if f.get("status") not in ("resolved", "abandoned")]
+    tier_counts = {1: 0, 2: 0, 3: 0, 0: 0}
+    for f in active_fofs:
+        tier_counts[foreshadow_tier(f) or 0] += 1
+    if any(tier_counts.values()):
+        head.append(f"- Tier 分布:T1 {tier_counts[1]} / T2 {tier_counts[2]} / "
+                    f"T3 {tier_counts[3]} / 未标 {tier_counts[0]}")
     if duty:
         head.append(duty_text)
     opt_lines = []

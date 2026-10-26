@@ -126,6 +126,12 @@ MASTER = """# 总纲
 - 主要转折:
 - 卷末高潮:
 
+## 节奏配比(每卷规划;章型定义见 references/type-matrix.md)
+
+- 章型配比:推进 __ / 高潮 __ / 过渡 __ / 关系 __ / 线索 __ / 代价 __
+- Tier-1 主线伏笔:__ 条(建议每卷新增 1-3 条,全书活跃 ≤5);跨卷伏笔:__ 条
+- 张力峰值:第 __、__、__ 章(相邻峰值间隔 ≤8 章;conflict 4-5 落在高潮章)
+
 <!--
 分层滚动规划:总纲只到卷级;当前卷写 outline/arc-1.md 细化;
 每章动笔前再写 outline/chapter-NNN.md。不要在这里堆细节。
@@ -292,6 +298,7 @@ def main() -> int:
         "current_chapter": 1,
         "completed_chapters": [],
         "chapter_word_counts": {},
+        "schema_version": 2,
         "created": today(),
         "updated": today(),
     }
@@ -301,9 +308,11 @@ def main() -> int:
         old = load_json(bj)
         for k in ("title", "genre", "logline", "target_chapters", "words_per_chapter",
                   "phase", "current_chapter", "completed_chapters", "chapter_word_counts",
-                  "created"):
+                  "schema_version", "created"):
             if k in old:
                 book[k] = old[k]
+        if "schema_version" not in old:
+            book.pop("schema_version", None)  # 旧项目不因 --force 被突然升级检查
     save_json(bj, book)
 
     templates = {

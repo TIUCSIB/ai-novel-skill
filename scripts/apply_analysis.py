@@ -13,8 +13,9 @@ import json
 import sys
 from pathlib import Path
 
-from _common import (analysis_path, ch_path, ch_file, count_words, foreshadow_fp,
-                     force_utf8_stdio, load_json, next_id, save_json, today)
+from _common import (CHAPTER_TYPES, TIER_SCOPE, analysis_path, ch_path, ch_file,
+                     count_words, foreshadow_fp, force_utf8_stdio, load_json,
+                     next_id, save_json, today)
 
 
 def find_char(chars: list[dict], name: str):
@@ -22,6 +23,64 @@ def find_char(chars: list[dict], name: str):
         if c.get("name") == name or name in (c.get("aliases") or []):
             return c
     return None
+
+
+def normalize_items(raw, kind: str, errors: list[str]) -> list[dict]:
+    """把 analysis.gains/costs 统一成对象数组;字符串条目补 name/type。"""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        errors.append(f"{kind}s 必须是数组")
+        return []
+    out: list[dict] = []
+    for i, item in enumerate(raw, 1):
+        if isinstance(item, str):
+            name = item.strip()
+            if not name:
+                errors.append(f"{kind}s 第 {i} 条为空")
+                continue
+            out.append({"type": kind, "name": name})
+            continue
+        if not isinstance(item, dict):
+            errors.append(f"{kind}s 第 {i} 条类型非法(应为字符串或对象)")
+            continue
+        name = str(item.get("name") or item.get("event") or "").strip()
+        if not name:
+            errors.append(f"{kind}s 第 {i} 条缺 name")
+            continue
+        rec = dict(item)
+        rec["name"] = name
+        rec.setdefault("type", kind)
+        out.append(rec)
+    return out
+
+
+def validate_foreshadow_new(new: dict, fid: str, errors: list[str]) -> None:
+    """plant.new 的 Tier 元数据校验;缺失合法,填了就必须自洽。"""
+    tier = new.get("tier")
+    if tier is not None and (isinstance(tier, bool) or not isinstance(tier, int)
+                             or tier not in (1, 2, 3)):
+        errors.append(f"伏笔 {fid} 的 tier={tier!r} 非法(应为 1/2/3)")
+    scope = new.get("scope")
+    if scope is not None and scope not in ("book", "arc", "chapter"):
+        errors.append(f"伏笔 {fid} 的 scope={scope!r} 非法(应为 book/arc/chapter)")
+    cross_volume = new.get("cross_volume")
+    if cross_volume is not None and not isinstance(cross_volume, bool):
+        errors.append(f"伏笔 {fid} 的 cross_volume 必须是 true/false")
+    spacing = new.get("min_payoff_spacing")
+    if spacing is not None and (isinstance(spacing, bool)
+                                or not isinstance(spacing, int) or spacing < 1):
+        errors.append(f"伏笔 {fid} 的 min_payoff_spacing={spacing!r} 非法(应为 ≥1 的整数)")
+
+
+def apply_foreshadow_meta(entry: dict, new: dict) -> None:
+    """把 plant.new 的 Tier 字段并入条目;scope 缺省时按 Tier 推导。"""
+    for key in ("tier", "scope", "cross_volume", "min_payoff_spacing"):
+        if new.get(key) is not None:
+            entry[key] = new[key]
+    tier = entry.get("tier")
+    if tier in TIER_SCOPE and not entry.get("scope"):
+        entry["scope"] = TIER_SCOPE[tier]
 
 
 def recompute_foreshadow(f: dict) -> None:
@@ -178,6 +237,19 @@ def main() -> int:
     errors: list[str] = []
     applied: list[str] = []
 
+    # 章级叙事账字段:缺失兼容旧项目;填了就必须合法。
+    typ = a.get("type")
+    if typ is not None and typ not in CHAPTER_TYPES:
+        errors.append(f"analysis.type={typ!r} 非法(应为 {'/'.join(CHAPTER_TYPES)})")
+    conf = a.get("conflict")
+    if conf is not None and (isinstance(conf, bool) or not isinstance(conf, int)
+                             or not 1 <= conf <= 5):
+        errors.append(f"analysis.conflict={conf!r} 非法(应为 1-5 整数)")
+    if a.get("hook_dna") is not None and not isinstance(a.get("hook_dna"), str):
+        errors.append("analysis.hook_dna 必须是字符串")
+    gains = normalize_items(a.get("gains"), "gain", errors)
+    costs = normalize_items(a.get("costs"), "cost", errors)
+
     tl = project / "ledger" / "timeline.jsonl"
     tl_kept = tl.read_text(encoding="utf-8").splitlines() if tl.exists() else []
 
@@ -222,6 +294,7 @@ def main() -> int:
         if act == "plant":
             new = op.get("new") or {}
             title = (new.get("title") or "").strip()
+            validate_foreshadow_new(new, op.get("id") or title or "new", errors)
             if entry is None and title:
                 # 无 id 的 plant:①按稳定指纹匹配 planned(容忍标点/空白差异;旧 planned 无 fp 则现算)
                 # ②按标题精确匹配 planned(--replace 重种)③放宽到任意状态同名
@@ -348,8 +421,8 @@ def main() -> int:
     # ---- 应用:伏笔 ----
     for op, entry in prepared_ops:
         act, note = op["action"], op.get("note", "")
+        new = op.get("new") or {}
         if entry is None:
-            new = op.get("new") or {}
             entry = {
                 "id": op.get("id") or next_id(fofs, "F"),
                 "title": new.get("title", ""),
@@ -365,6 +438,8 @@ def main() -> int:
             }
             fofs.append(entry)
             applied.append(f"新伏笔登记:{entry['id']} {entry['title']}")
+        if act == "plant" and new:
+            apply_foreshadow_meta(entry, new)
         entry.setdefault("beats", []).append({"chapter": n, "action": act, "note": note})
         if not entry.get("fp"):
             entry["fp"] = foreshadow_fp(entry.get("title", ""))  # 手登记旧账统一补指纹
@@ -388,6 +463,28 @@ def main() -> int:
         tl_lines.append({"chapter": n, "entity": c["id"] if c else ev.get("entity", "plot"),
                          "type": ev.get("type", "plot"), "event": ev.get("event", ""),
                          "note": ev.get("note", "")})
+
+    # ---- 应用:收支账(gains/costs → timeline;代价守恒检查的机器依据) ----
+    def _entity_ref(ent: str | None) -> str:
+        if not ent:
+            return "plot"
+        c = find_char(chars, ent) or next((x for x in chars if x.get("id") == ent), None)
+        return c["id"] if c else ent
+
+    for kind, items in (("gain", gains), ("cost", costs)):
+        label = "获得" if kind == "gain" else "代价"
+        for item in items:
+            name = item["name"]
+            note = item.get("note", "")
+            tl_lines.append({
+                "chapter": n,
+                "entity": _entity_ref(item.get("entity")),
+                "type": kind,
+                "event": f"{label}「{name}」" + (f":{note}" if note else ""),
+                "note": item.get("for", ""),
+            })
+    if gains or costs:
+        applied.append(f"收支事件:{len(gains)} 获得 / {len(costs)} 代价")
 
     # ---- 应用:术语账(新名词首现管理) ----
     # 术语=题材专名/组织职司/机制概念等"读者需要知道那是什么"的词。

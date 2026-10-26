@@ -55,18 +55,34 @@ def analysis_names(a: dict) -> list[str]:
     return [c.get("name", "") for c in a.get("characters", []) if isinstance(c, dict)]
 
 
+def item_names(items: list) -> str:
+    names = []
+    for item in items or []:
+        if isinstance(item, str):
+            names.append(item)
+        elif isinstance(item, dict):
+            names.append(str(item.get("name") or item.get("event") or "?"))
+    return "、".join(names)
+
+
 def fmt_chapter(a: dict, reasons: list[str], full: bool, id2name: dict) -> str:
     n = a.get("chapter", "?")
     lines = [f"【第 {n} 章】《{a.get('title', '未命名')}》 | 命中:{';'.join(reasons)}"]
     if a.get("location") or a.get("timeline"):
         lines.append(f"  时空:{a.get('timeline', '?')} @ {a.get('location', '?')}")
     if full:
+        if a.get("type") or a.get("conflict") or a.get("hook_dna"):
+            lines.append(f"  章型:{a.get('type', '?')} | 冲突值:{a.get('conflict', '?')} | "
+                         f"钩子DNA:{a.get('hook_dna', '?')}")
         lines.append(f"  摘要:{a.get('summary', '')}")
         lines.append(f"  钩子:{a.get('hook', '')}")
         lines.append(f"  角色:{', '.join(filter(None, analysis_names(a)))}")
         ops = a.get("foreshadow_ops") or []
         if ops:
             lines.append("  伏笔操作:" + ";".join(f"{o.get('id', '?')}{o.get('action')}" for o in ops))
+        if a.get("gains") or a.get("costs"):
+            lines.append(f"  收支:获得[{item_names(a.get('gains')) or '无'}] / "
+                         f"代价[{item_names(a.get('costs')) or '无'}]")
     return "\n".join(lines)
 
 
@@ -162,11 +178,22 @@ def main() -> int:
             blob = json.dumps(f, ensure_ascii=False)
             if args.thread in blob:
                 beats = " → ".join(f"第{b.get('chapter')}章{b.get('action')}({b.get('note', '')})" for b in f.get("beats", [])) or "无节拍"
-                head.append(f"【伏笔】{f['id']} {f['title']} [{f.get('status')}] 期限:{f.get('deadline_chapter', '无')}")
+                tags = []
+                if f.get("tier"):
+                    tags.append(f"T{f['tier']}")
+                if f.get("scope"):
+                    tags.append(str(f["scope"]))
+                if f.get("cross_volume"):
+                    tags.append("跨卷")
+                tag_text = f" | {'/'.join(tags)}" if tags else ""
+                head.append(f"【伏笔】{f['id']} {f['title']} [{f.get('status')}] "
+                            f"期限:{f.get('deadline_chapter', '无')}{tag_text}")
                 head.append(f"  描述:{f.get('description', '')}")
                 head.append(f"  节拍:{beats}")
                 if f.get("payoff_plan"):
                     head.append(f"  回收计划:{f['payoff_plan']}")
+                if f.get("min_payoff_spacing"):
+                    head.append(f"  最小回收间隔:{f['min_payoff_spacing']} 章")
         for a in d["analyses"]:
             for op in a.get("foreshadow_ops") or []:
                 if args.thread in json.dumps(op, ensure_ascii=False):

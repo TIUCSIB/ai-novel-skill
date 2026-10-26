@@ -1,5 +1,18 @@
 # ai-novel 技能变更记录
 
+## v3.12(2026-10-26)—— 结构层补强:章型矩阵、伏笔 Tier、代价守恒、张力曲线、钩子 DNA
+
+借鉴 tianming-skill 的"可验收结构"思路,给原本偏"防坏"的体系补上**正向结构承诺**:每章是什么类型、该兑现什么、代价何时还、张力怎么走、钩子会不会和上一章长一样。五项机制全部可选、向后兼容,旧项目不填不报错;新增检查一律 WARN(仅结构非法的值是 ERROR)。
+
+- **章型矩阵(`章节类型`)**:六类 `推进/高潮/过渡/关系/线索/代价`,各有必须项、禁止项、审校重点与上下文提示。`chapter-NNN.md` 与 `analysis/NNN.json` 都记 `type`;不一致只警告。新增 `references/type-matrix.md` 作为唯一判据表。`context_pack` 在计划含新字段时于 P0 顶部输出「本章类型提示」:类型契约、冲突值、DNA、相邻章同构警告、章型专属漏项(线索章无伏笔操作 / 高潮章冲突 <4 / 关系章无关系变化等)。
+- **伏笔 Tier(`tier` / `scope` / `cross_volume` / `min_payoff_spacing`)**:T1 全书主线(跨卷,活跃建议 ≤5)、T2 弧线、T3 章内;过期阈值分别为 35/12/4 章,**旧账无 tier 仍按 15 章**,不破坏存量项目。跨卷伏笔必须 T1;`min_payoff_spacing` 校验埋设→回收的最小间隔。`check_ledger` 报 Tier 分布、活跃 T1 超配额、10 章后无活跃 T1;`context_pack`/`snapshot`/`query_ledger`/`loop_status` 均按 Tier 排序与标注。
+- **代价守恒(`gains` / `costs`)**:analysis 记录本章获得与代价(字符串或 `{type,name,major,entity,note,for}`)。`major` 省略时按 `type` 推定(道具/能力/等级/盟友/胜利/地位类视为重大),显式 `major: false` 则以作者判断为准、不追代价 —— 否则每次捡到道具都会误报"顺风车"。重大获得须在 5 章内出现代价;连续两章只赢不亏报"顺风车"。`apply_analysis` 把得失写入 timeline(`gain`/`cost` 事件),`--replace` 连带撤销,保持幂等。
+- **冲突值(`conflict` 1-5)与张力曲线**:1=日常/无冲突,3=明确转折,4=重大冲突/高潮,5=卷级峰值/不可逆。`check_ledger --curve` 打印逐章走势;近 10 章 sparkline(`▁▂▃▄▅`)、连续 3 章 ≥4(疲劳)、连续 5 章 ≤2(温水)、10 章无高潮均 WARN。计划与分析冲突值不一致也警告。**连续性判定按真实章号相邻**:中间隔着未标类型的章不算连排(用紧凑列表判定会把第 1/3/5 章误当成连续三章)。
+- **钩子 DNA(`hook_dna`)**:3-5 个结构词(如 `主角-发现-请帖-死人落款`)描述钩子的骨架而非措辞。计划 vs 分析 Jaccard <0.3 = 计划/成稿漂移;相邻章 Jaccard >0.8 = 同构;实际章末钩子对 DNA 词的覆盖率 <0.5 也警告。判据与示例见 `references/hooks.md` §五。
+- **schema v2**:新项目 `book.json` 写 `schema_version: 2`;旧项目不自动升级,缺 `type` 不报警。`init_project --force` 保留既有 `schema_version`。`check_ledger` 的章型/代价/DNA/Tier 检查全部为 WARN,不阻断既有流程。
+- **文档同步**:新增 `references/type-matrix.md`;更新 `ledger-schema.md`(字段/示例/timeline 类型)、`review-rubric.md`(按章型调整审校重点、四类机械预检、盲审模板)、`arc-audit.md`(第十一步:类型分布/张力曲线/Tier 配额/代价守恒,`--curve`)、`craft.md`(§11)、`hooks.md`(§五)、`init_project.py` 总纲模板(节奏配比)。
+- 回归:新增 t38-t42,覆盖类型/Tier/冲突校验、Tier 阈值与排序、analysis 结构非法不落盘、章型矩阵警告/得失账/DNA 漂移、类型与冲突连排只认真实相邻章号;全套 **42 例全绿**。实测中另修两处自测暴露的缺陷:`major: false` 被类型推断覆盖成"重大获得"、连续检测把隔章算成连排。
+
 ## v3.11(2026-10-21)—— 撤回市场输入层(扫榜→拆文→立项)+ sync_skill 分叉检测修复
 
 同日先按 oh-story-claudecode 的机制补了"扫榜→拆文→立项"链路(scan_rank.py / teardown.py / market-scan.md / teardown-deep.md / 路由 skill / SKILL.md 命令入口表),用户试用后决定**不要这条链路,保持原有功能集** —— 全部撤除,SKILL.md 阶段 0 与 references 恢复 v3.10 原状。功能代码在 git 历史里可查,不再赘述。

@@ -3,7 +3,7 @@
 **脚本类用例(3/4/5/7/9 及 8 局部)已可执行:**
 
 ```bash
-python .agents/skills/ai-novel/tests/run_tests.py   # 37 个用例(t01-t37),~10 秒,全绿为过
+python .agents/skills/ai-novel/tests/run_tests.py   # 42 个用例(t01-t42),~12 秒,全绿为过
 ```
 
 改版后先跑它;以下手测清单针对**行为类用例**(1/2/6,需真实会话)。每次修改 SKILL.md、references/ 或 scripts/ 之后执行。**用例 1/2 必须在全新会话中测试**(技能触发依赖新会话的上下文)。用例基于 2026-10-07 实战(《万象源解》导入 + 第 27 章循环)沉淀。
@@ -196,6 +196,20 @@ python .agents/skills/ai-novel/tests/run_tests.py   # 37 个用例(t01-t37),~10 
 
 **自动化状态小结**:A/B/F 有脚本回归(t26/t27/t28/t18),改版必跑;**C/D/E 是纯语义判断,任何词表/正则都替代不了**,必须在真实会话里用盲审 D4/D7 验证,不得用"指标全绿"宣称通过。
 
+## 用例 17:章型 / Tier / 张力 / 代价 / DNA(v3.12)
+
+**操作**:造一个含 6 类章型、多 Tier 伏笔、gain/cost 与计划/分析 DNA 的项目;分别跑 `check_ledger.py <项目> --all --curve`、`context_pack.py <项目> N`;用非法 `type`/`conflict`/`tier` 写 analysis 后跑 `apply_analysis.py`。
+
+**期望**(t38-t42 已覆盖):
+- [ ] `apply_analysis` 接受并持久化 `type/conflict/hook_dna`;新伏笔的 `tier/scope/cross_volume/min_payoff_spacing` 落账,`scope` 缺省时由 tier 推导;旧 `type`/`conflict` 非法 → exit 1 且**台账零写入**
+- [ ] gain/cost 写入 timeline(`type: gain|cost`),`--replace` 后该章得失事件全部撤销、重放结果幂等
+- [ ] 显式 `major: false` 的获得不追代价;省略 `major` 时按 `type` 推定重大
+- [ ] Tier 过期阈值:T1=35 / T2=12 / T3=4;旧账无 tier 仍按 15;跨卷伏笔非 T1 报警;`min_payoff_spacing` 不足报警
+- [ ] `context_pack` P0 出现「本章类型提示」(仅当计划含新字段),含类型契约、冲突值、DNA、相邻章 Jaccard >0.8 警告与章型漏项
+- [ ] `check_ledger --all` 报类型分布/Tier 分布/张力 sparkline;`--curve` 输出逐章冲突值;线索/关系/代价/高潮/过渡/推进的章型违约均 WARN
+- [ ] **连排只看真实相邻章号**:第 1/3/5 章同为过渡不算"连续三章",补齐 2/4 后才报节奏停滞;冲突值连排同理
+- [ ] 章型/冲突/DNA/Tier 检查全部为 WARN;只有结构非法值(如 tier=9、conflict=7)才是 ERROR —— 旧项目不因缺字段被卡
+
 ## 已知回归基准(用于对照)
 
 - 实战项目《万象源解》(本仓库不含其正文,28 章):check_ledger 0 ERROR;默认只扫最近两章,故不报历史黑名单
@@ -223,5 +237,5 @@ python .agents/skills/ai-novel/tests/run_tests.py   # 37 个用例(t01-t37),~10 
 ## 改版流程
 
 1. 改前:跑一遍本清单记录现状
-2. 改后:重跑用例 3/4/5(脚本类)+ 用例 1/2(SKILL.md 行为类,新会话)+ 用例 16(正文质量回归)
+2. 改后:重跑用例 3/4/5(脚本类)+ 用例 1/2(SKILL.md 行为类,新会话)+ 用例 16(正文质量回归)+ 用例 17(章型/Tier/张力/代价/DNA,涉及对应脚本时)
 3. 新增/变更的能力:先在《万象源解》或临时项目上小规模实测,再把经验写回 references/

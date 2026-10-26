@@ -73,6 +73,21 @@ class Regression(unittest.TestCase):
     def _read(self, rel: str):
         return (self.proj / rel).read_text(encoding="utf-8")
 
+    def _fresh_project(self, tag: str) -> Path:
+        """新用例用独立项目,避免共享夹具的进度/台账互相污染。"""
+        import shutil
+        root = Path(tempfile.mkdtemp(prefix=f"ainovel-{tag}-")) / "测试新书"
+        p = run("init_project.py", "--dir", root, "--title", "测试新书", "--genre", "玄幻",
+                "--chapters", "30", "--words", "1500-2500")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.addCleanup(lambda: shutil.rmtree(root.parent, ignore_errors=True))
+        return root
+
+    def _write_to(self, root: Path, rel: str, content: str):
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content, encoding="utf-8")
+
     # ---------- t01: init(用例 1 的脚本部分) ----------
     def test_t01_init_scaffold(self):
         p = run("init_project.py", "--dir", self.proj, "--title", "测试书", "--genre", "玄幻",
@@ -1015,6 +1030,243 @@ class Regression(unittest.TestCase):
         (self.proj / "outline/chapter-200.md").unlink()
         (self.proj / "outline/chapter-014.md").unlink()
 
+    # ---------- t38: 章节类型/冲突值/钩子 DNA 落账与机械提示 ----------
+    def test_t38_type_tier_and_conflict(self):
+        proj = self._fresh_project("type")
+        self._write_to(proj, "chapters/001.md", "# 第1章 线索\n\n" + CH1_TEXT)
+        self._write_to(proj, "outline/chapter-001.md",
+                       "# 第1章 线索\n章节类型: 线索\n冲突值: 2\n"
+                       "钩子DNA: 主角-发现-请帖-死人落款\n"
+                       "出场角色: 主角\n伏笔操作: plant 请帖落款\n"
+                       "章末钩子: 主角发现请帖落款是死人(型1 | 强度L3)\n")
+        a = json.loads(json.dumps(CH1_ANALYSIS))
+        a["type"] = "线索"
+        a["conflict"] = 2
+        a["hook_dna"] = "主角-发现-请帖-死人落款"
+        a["hook"] = "主角发现请帖落款是死人"
+        a["foreshadow_ops"] = [{"action": "plant", "new": {
+            "title": "请帖落款", "description": "落款是已死之人",
+            "deadline_chapter": 20, "payoff_plan": "第二弧揭露",
+            "tier": 1, "scope": "book", "cross_volume": True,
+            "min_payoff_spacing": 5,
+        }}]
+        self._write_to(proj, "analysis/001.json", json.dumps(a, ensure_ascii=False))
+        p = run("apply_analysis.py", proj, 1)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        f = json.loads((proj / "ledger/foreshadowing.json").read_text(encoding="utf-8"))["foreshadows"][0]
+        self.assertEqual(f["tier"], 1)
+        self.assertEqual(f["scope"], "book")
+        self.assertTrue(f["cross_volume"])
+        self.assertEqual(f["min_payoff_spacing"], 5)
+        p2 = run("check_ledger.py", proj, "--chapter", "1")
+        self.assertEqual(p2.returncode, 0, p2.stdout + p2.stderr)
+        self.assertIn("章节类型分布:线索 1", p2.stdout)
+        self.assertIn("伏笔 Tier 分布:T1 1", p2.stdout)
+        p3 = run("check_ledger.py", proj, "--curve")
+        self.assertIn("## 张力曲线", p3.stdout)
+        self.assertIn("第 1 章:2/5", p3.stdout)
+        # 高潮章冲突值过低 + 钩子未标 L3+ → WARN,不阻断
+        self._write_to(proj, "chapters/002.md", "# 第2章 高潮\n\n" + CH1_TEXT)
+        self._write_to(proj, "outline/chapter-002.md",
+                       "# 第2章 高潮\n章节类型: 高潮\n冲突值: 2\n"
+                       "钩子DNA: 主角-被迫-决战-失败\n章末钩子: 主角被迫决战(型2 | 强度L2)\n")
+        b = json.loads(json.dumps(a))
+        b["chapter"] = 2
+        b["title"] = "第2章 高潮"
+        b["type"] = "高潮"
+        b["hook_dna"] = "主角-被迫-决战-失败"
+        b["hook"] = "主角被迫决战"
+        b["foreshadow_ops"] = []
+        b["organizations"] = []
+        b["world_facts"] = []
+        b["relationships"] = []
+        self._write_to(proj, "analysis/002.json", json.dumps(b, ensure_ascii=False))
+        p4 = run("apply_analysis.py", proj, 2)
+        self.assertEqual(p4.returncode, 0, p4.stdout + p4.stderr)
+        p5 = run("check_ledger.py", proj, "--chapter", "2")
+        self.assertIn("高潮章", p5.stdout)
+        self.assertIn("conflict=2", p5.stdout)
+
+    # ---------- t39: 伏笔 Tier 专属休眠阈值 + 上下文包 Tier 排序 ----------
+    def test_t39_foreshadow_tier_thresholds(self):
+        proj = self._fresh_project("tier")
+        book = json.loads((proj / "book.json").read_text(encoding="utf-8"))
+        book["current_chapter"] = 40
+        book["completed_chapters"] = []
+        (proj / "book.json").write_text(json.dumps(book, ensure_ascii=False, indent=2) + "\n",
+                                        encoding="utf-8")
+        fofs = [
+            {"id": "F-001", "title": "主线", "fp": "a", "description": "全书主线",
+             "status": "planted", "planned_chapter": 1, "planted_chapter": 1,
+             "deadline_chapter": 50, "payoff_plan": "卷末", "tier": 1, "scope": "book",
+             "cross_volume": True, "beats": [{"chapter": 1, "action": "plant", "note": ""}],
+             "last_touched": 1},
+            {"id": "F-002", "title": "章级线索", "fp": "b", "description": "小线索",
+             "status": "planted", "planned_chapter": 1, "planted_chapter": 35,
+             "deadline_chapter": 50, "payoff_plan": "近期", "tier": 3, "scope": "chapter",
+             "beats": [{"chapter": 35, "action": "plant", "note": ""}], "last_touched": 35},
+            {"id": "F-003", "title": "旧账", "fp": "c", "description": "未标 Tier",
+             "status": "planted", "planned_chapter": 1, "planted_chapter": 1,
+             "deadline_chapter": 50, "payoff_plan": "远期",
+             "beats": [{"chapter": 1, "action": "plant", "note": ""}], "last_touched": 1},
+        ]
+        self._write_to(proj, "ledger/foreshadowing.json",
+                       json.dumps({"foreshadows": fofs}, ensure_ascii=False))
+        p = run("check_ledger.py", proj, "--chapter", "40")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("T1", p.stdout)
+        self.assertIn("阈值 35", p.stdout)
+        self.assertIn("T3", p.stdout)
+        self.assertIn("阈值 4", p.stdout)
+        self.assertIn("旧账阈值 15", p.stdout)
+        self.assertIn("伏笔 Tier 分布", p.stdout)
+        sys.path.insert(0, str(SCRIPTS))
+        from context_pack import foreshadow_tiers
+        ordered = foreshadow_tiers({"foreshadows": [
+            {"id": "F-003", "title": "章级", "description": "", "status": "planted",
+             "deadline_chapter": 60, "last_touched": 40, "tier": 3},
+            {"id": "F-001", "title": "主线", "description": "", "status": "planted",
+             "deadline_chapter": 60, "last_touched": 40, "tier": 1},
+        ]}, 40)
+        joined = "\n".join(ordered["later"])
+        self.assertLess(joined.index("[T1]"), joined.index("[T3]"),
+                        "Tier-1 必须排在章级线索之前")
+
+    # ---------- t40: analysis 新字段与 Tier 元数据的写入前校验 ----------
+    def test_t40_analysis_schema_validation(self):
+        proj = self._fresh_project("schema")
+        self._write_to(proj, "chapters/001.md", "# 第1章 测试\n\n" + CH1_TEXT)
+        a = json.loads(json.dumps(CH1_ANALYSIS))
+        a["type"] = "打斗"
+        a["conflict"] = 6
+        self._write_to(proj, "analysis/001.json", json.dumps(a, ensure_ascii=False))
+        p = run("apply_analysis.py", proj, 1)
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("type", p.stdout)
+        self.assertIn("conflict", p.stdout)
+        chars = json.loads((proj / "ledger/characters.json").read_text(encoding="utf-8"))
+        self.assertEqual(chars["characters"], [], "校验失败不得写台账")
+        a["type"] = "推进"
+        a["conflict"] = 3
+        a["foreshadow_ops"] = [{"action": "plant", "new": {
+            "title": "坏 Tier", "tier": 4, "scope": "saga",
+            "cross_volume": "yes", "min_payoff_spacing": 0,
+        }}]
+        self._write_to(proj, "analysis/001.json", json.dumps(a, ensure_ascii=False))
+        p2 = run("apply_analysis.py", proj, 1)
+        self.assertEqual(p2.returncode, 1)
+        for needle in ("tier", "scope", "cross_volume", "min_payoff_spacing"):
+            self.assertIn(needle, p2.stdout)
+        chars2 = json.loads((proj / "ledger/characters.json").read_text(encoding="utf-8"))
+        self.assertEqual(chars2["characters"], [], "Tier 校验失败同样不得写台账")
+
+    # ---------- t41: 类型矩阵告警 + 代价守恒 + 钩子 DNA 漂移 ----------
+    def test_t41_type_matrix_warnings_and_cost_dna(self):
+        proj = self._fresh_project("matrix")
+        self._write_to(proj, "ledger/foreshadowing.json", json.dumps({"foreshadows": [
+            {"id": "F-001", "title": "主线", "fp": "a", "description": "全书主线",
+             "status": "planted", "planned_chapter": 1, "planted_chapter": 1,
+             "deadline_chapter": 20, "payoff_plan": "卷末", "tier": 1, "scope": "book",
+             "beats": [{"chapter": 1, "action": "plant", "note": ""}], "last_touched": 1},
+        ]}, ensure_ascii=False))
+        base = json.loads(json.dumps(CH1_ANALYSIS))
+        for n, typ in ((1, "线索"), (2, "关系"), (3, "代价")):
+            self._write_to(proj, f"chapters/{n:03d}.md", f"# 第{n}章 测试\n\n" + CH1_TEXT)
+            a = json.loads(json.dumps(base))
+            a["chapter"] = n
+            a["title"] = f"第{n}章 测试"
+            a["type"] = typ
+            a["conflict"] = 2
+            a["foreshadow_ops"] = []
+            a["organizations"] = []
+            a["world_facts"] = []
+            if typ == "关系":
+                a["relationships"] = []
+            self._write_to(proj, f"analysis/{n:03d}.json", json.dumps(a, ensure_ascii=False))
+        p1 = run("check_ledger.py", proj, "--chapter", "1")
+        self.assertIn("线索章", p1.stdout)
+        p2 = run("check_ledger.py", proj, "--chapter", "2")
+        self.assertIn("关系章", p2.stdout)
+        p3 = run("check_ledger.py", proj, "--chapter", "3")
+        self.assertIn("代价章", p3.stdout)
+        # 推进章:计划 DNA 与实际 DNA 漂移 + 重大获得无代价
+        self._write_to(proj, "chapters/004.md", "# 第4章 测试\n\n" + CH1_TEXT)
+        self._write_to(proj, "outline/chapter-004.md",
+                       "# 第4章 测试\n章节类型: 推进\n冲突值: 3\n"
+                       "钩子DNA: 主角-发现-请帖-死人落款\n")
+        a4 = json.loads(json.dumps(base))
+        a4["chapter"] = 4
+        a4["title"] = "第4章 测试"
+        a4["type"] = "推进"
+        a4["conflict"] = 3
+        a4["hook_dna"] = "配角-逃亡-城门-追兵"
+        a4["hook"] = "他跑出城门"
+        a4["relationships"] = []
+        a4["foreshadow_ops"] = []
+        a4["organizations"] = []
+        a4["world_facts"] = []
+        a4["gains"] = [{"type": "item", "name": "神器", "major": True}]
+        a4["costs"] = []
+        self._write_to(proj, "analysis/004.json", json.dumps(a4, ensure_ascii=False))
+        p4 = run("check_ledger.py", proj, "--chapter", "4")
+        self.assertIn("钩子DNA漂移", p4.stdout)
+        self.assertIn("重大获得", p4.stdout)
+        # 显式 major:false 的获得不按重大获得追代价(否则每次拿道具都误报顺风车)
+        a4["gains"] = [{"type": "item", "name": "铜牌铭文", "major": False}]
+        self._write_to(proj, "analysis/004.json", json.dumps(a4, ensure_ascii=False))
+        p4b = run("check_ledger.py", proj, "--chapter", "4")
+        self.assertNotIn("重大获得", p4b.stdout)
+        # 过渡章收 Tier-1 → WARN
+        self._write_to(proj, "chapters/005.md", "# 第5章 测试\n\n" + CH1_TEXT)
+        a5 = json.loads(json.dumps(base))
+        a5["chapter"] = 5
+        a5["title"] = "第5章 测试"
+        a5["type"] = "过渡"
+        a5["conflict"] = 2
+        a5["relationships"] = []
+        a5["organizations"] = []
+        a5["world_facts"] = []
+        a5["foreshadow_ops"] = [{"id": "F-001", "action": "payoff", "note": "收线"}]
+        self._write_to(proj, "analysis/005.json", json.dumps(a5, ensure_ascii=False))
+        p5 = run("check_ledger.py", proj, "--chapter", "5")
+        self.assertIn("过渡章却在收 Tier-1", p5.stdout)
+
+    # ---------- t42: 类型/冲突连排只看真正相邻的章号 ----------
+    def test_t42_adjacency_not_compact_list(self):
+        proj = self._fresh_project("adjacency")
+        base = json.loads(json.dumps(CH1_ANALYSIS))
+        # 1/3/5 章同为过渡、同为 conflict 5:中间隔着别的章,不算"连续三章"
+        for n in (1, 3, 5):
+            self._write_to(proj, f"chapters/{n:03d}.md", f"# 第{n}章 测试\n\n" + CH1_TEXT)
+            a = json.loads(json.dumps(base))
+            a["chapter"] = n
+            a["title"] = f"第{n}章 测试"
+            a["type"] = "过渡"
+            a["conflict"] = 5
+            a["relationships"] = []
+            a["organizations"] = []
+            a["world_facts"] = []
+            a["foreshadow_ops"] = []
+            self._write_to(proj, f"analysis/{n:03d}.json", json.dumps(a, ensure_ascii=False))
+        p = run("check_ledger.py", proj, "--all")
+        self.assertNotIn("节奏停滞", p.stdout, "隔章的同类章不得算连排")
+        self.assertNotIn("高潮疲劳", p.stdout, "隔章的高冲突不得算连排")
+        # 真连排仍然要报
+        for n in (2, 4):
+            self._write_to(proj, f"chapters/{n:03d}.md", f"# 第{n}章 测试\n\n" + CH1_TEXT)
+            a = json.loads(json.dumps(base))
+            a["chapter"] = n
+            a["title"] = f"第{n}章 测试"
+            a["type"] = "过渡"
+            a["conflict"] = 5
+            a["relationships"] = []
+            a["organizations"] = []
+            a["world_facts"] = []
+            a["foreshadow_ops"] = []
+            self._write_to(proj, f"analysis/{n:03d}.json", json.dumps(a, ensure_ascii=False))
+        p2 = run("check_ledger.py", proj, "--all")
+        self.assertIn("节奏停滞", p2.stdout)
+        self.assertIn("高潮疲劳", p2.stdout)
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@
   "logline": "小镇少年凭一块遇血则热的残玉,卷入百年前的灭门旧案",
   "target_chapters": 100,
   "words_per_chapter": { "min": 2000, "max": 3000 },
+  "schema_version": 2,
   "phase": "writing",
   "current_chapter": 4,
   "completed_chapters": [1, 2, 3],
@@ -33,6 +34,7 @@
 | `phase` | `setup` → `outline` → `writing` → `complete`,只进不退 |
 | `current_chapter` | 下一章要写的章号(= 已完成最大章 + 1) |
 | `completed_chapters` | 已完成并回写台账的章号列表 |
+| `schema_version` | 台账格式版本。新项目为 `2`;旧项目缺省时不强制新检查,`--force` 也不会自动升级。手动补 `2` 后,已完成章缺 `type` 会 WARN |
 
 ---
 
@@ -88,6 +90,10 @@
       "fp": "bd1074e374",
       "description": "第一章玉佩在林昭划伤手时发烫,暗示与血祭之法相关",
       "status": "planted",
+      "tier": 1,
+      "scope": "book",
+      "cross_volume": true,
+      "min_payoff_spacing": 20,
       "planned_chapter": 1,
       "planted_chapter": 1,
       "deadline_chapter": 40,
@@ -105,11 +111,15 @@
 |---|---|
 | `status` | 状态机:`planned`(计划埋)→ `planted`(已埋)→ `advanced`(已推进/受挫)→ `resolved`(已回收)/ `abandoned`(已弃) |
 | `fp` | 稳定指纹:标题归一化(去标点空白)后的短 hash,apply_analysis 自动维护。plant 无 id 时优先按它回种 planned 条目(标题差标点/空白也能对上);`check_ledger` 用它抓"同一伏笔记两条账"。手登记可不填,回写时自动补 |
+| `tier` | 伏笔层级:`1` 全书主线 / `2` 弧线 / `3` 章级线索。旧账可缺省(按 15 章休眠阈值);填了按 Tier 阈值检查(35/12/4 章)。类型矩阵见 `references/type-matrix.md` |
+| `scope` | 作用域:`book` / `arc` / `chapter`;缺省时按 tier 推导(1→book,2→arc,3→chapter) |
+| `cross_volume` | 是否跨卷;跨卷主线应为 Tier-1(否则 WARN) |
+| `min_payoff_spacing` | 埋设到回收的最小章数;低于该间隔 WARN(适合防"刚埋就收") |
 | `deadline_chapter` | 最迟回收章号;无硬期限可填 `null`,但长期伏笔尽量给 |
 | `beats[].action` | `plant` / `advance` / `setback`(受挫但不消除) / `payoff` / `abandon` |
 | `payoff_plan` | 回收方式草案,允许后续修订 |
 
-状态机合法性(脚本校验):`payoff` 之前必须已有 `plant`;`resolved` 后不得再有节拍;`planned` 不能直接 `payoff`。
+状态机合法性(脚本校验):`payoff` 之前必须已有 `plant`;`resolved` 后不得再有节拍;`planned` 不能直接 `payoff`。新伏笔的 `tier`/`scope`/`cross_volume`/`min_payoff_spacing` 写在 analysis `foreshadow_ops[].new` 里,由 `apply_analysis` 入账。
 
 ---
 
@@ -207,7 +217,7 @@
 {"chapter": 2, "entity": "C-002", "type": "relationship", "event": "与林昭结为同行", "note": "受血字请帖所迫"}
 ```
 
-`type` 约定取值:`possession` / `injury` / `location` / `relationship` / `ability` / `status` / `plot` / `death`。
+`type` 约定取值:`possession` / `injury` / `location` / `relationship` / `ability` / `status` / `plot` / `death` / `gain`(获得) / `cost`(代价)。`gain`/`cost` 由 `analysis.gains` / `analysis.costs` 自动追加,是代价守恒检查的机器依据。
 
 ---
 
@@ -222,11 +232,21 @@
   "location": "青石镇客栈 -> 药王峰山道",
   "timeline": "天元历982年初春,夜雨",
   "summary": "林昭夜宿客栈,玉佩再度发烫;老周劝他离镇,他反被神秘人递来的血字请帖堵在房中。请帖落款是十年前已死的'沈半城'。林昭决定留下查清玉佩来历,老周被迫同行。",
+  "type": "线索",
+  "conflict": 3,
+  "hook_dna": "林昭-收到-请帖-落款死人",
   "plot_points": [
     "玉佩第二次发烫,与请帖同时出现",
     "神秘人送血字请帖,落款为已死之人"
   ],
   "hook": "血字请帖的落款是十年前已死的沈半城",
+  "gains": [
+    { "type": "item", "name": "血字请帖", "major": false, "note": "拿到物证" }
+  ],
+  "costs": [
+    { "type": "relationship", "name": "老周开始怀疑林昭", "major": true,
+      "for": "追查请帖", "note": "信任出现裂缝" }
+  ],
   "characters": [
     {
       "name": "林昭",
@@ -265,6 +285,10 @@
 | 字段 | 必填 | 说明 |
 |---|---|---|
 | `summary` | ✅ | 150-300 字,覆盖事件/决策/状态变化/钩子;`context_pack.py` 直接取它做前情摘要 |
+| `type` | 建议 | 章节类型:`推进/高潮/过渡/关系/线索/代价`。新项目 `schema_version >= 2` 时已完成章缺省会 WARN;类型矩阵见 `references/type-matrix.md` |
+| `conflict` | 建议 | 本章冲突值 1-5:1 日常 / 2 摩擦 / 3 明确转折 / 4 大战 / 5 卷峰。用于张力曲线与高潮章检查 |
+| `hook_dna` | 建议 | 钩子结构指纹(3-5 个短词,如 `主角-发现-请帖-死人落款`);与章计划 `钩子DNA` 比对,漂移或相邻章同构会 WARN |
+| `gains` / `costs` | | 本章收支账。条目为字符串或 `{type,name,major,note,entity,for}`;`major` 省略时按 `type` 推定(道具/能力/等级/盟友/胜利/地位类视为重大),显式 `major: true` 的重大获得需在 5 章内出现 `costs`,否则 WARN;显式 `major: false` 不追代价。apply_analysis 会写入 timeline 的 `gain`/`cost` 事件 |
 | `hook` | ✅ | 章末钩子一句话 |
 | `location` / `timeline` | ✅ | 本章地点与故事内时间;`timeline` 用统一历法+相对锚(如"天元历982年初春,大猎后第七日"),正文里的时序标记(第X日)必须与之对得上 —— 这是时序倒挂类事故的第一道闸 |
 | `characters` | ✅(可为空数组) | `name` 必须能对上台账(或新增角色);`updates` 是对 `state` 的键值增量 |
@@ -272,7 +296,7 @@
 | `organizations` | | 组织/势力变动:`name` 匹配或新建;`members[].action` 取 `join`/`leave`;`updates` 对组织字段(如 status)做增量 |
 | `depends_on` | 建议 | 本章情节**因果上依赖**的前章事件,格式"第N章:事件短句"。写下一章时这就是"为什么"的来源;弧末审计据此查因果链是否闭合 |
 | `sets_up` | 建议 | 本章开启、**尚未闭环**的因果线,格式"事件 -> 预期:后章怎么接"。`context_pack.py` 会把近 3 章的 sets_up 汇成"待承接因果线"提醒下一章 |
-| `foreshadow_ops` | | `id` 用台账 ID;**新埋伏笔**可省 `id` 但须带 `new: {"title": "...", "description": "...", "deadline_chapter": 40, "payoff_plan": "..."}`,脚本自动分配 F-xxx |
+| `foreshadow_ops` | | `id` 用台账 ID;**新埋伏笔**可省 `id` 但须带 `new: {"title": "...", "description": "...", "deadline_chapter": 40, "payoff_plan": "..."}`,脚本自动分配 F-xxx。`new` 还可带 `tier`(1/2/3)、`scope`、`cross_volume`、`min_payoff_spacing`;旧账缺省时按旧规则 |
 | `world_facts` | | 新确立的世界规则 |
 | `terms` | | 本章**首次出现**的新术语:`{"term","brief","truth","reveal_chapter"}`;brief 是读者此刻应知的最小解释,truth 是完整真相(留到揭示章)。apply_analysis 落 `ledger/terms.json`,同词重复登记不覆盖首现 |
 | `revealed_terms` | | 本章**揭示真相**的术语名数组(字符串);apply 把对应 terms 标记 revealed 并记 revealed_chapter |
@@ -287,6 +311,10 @@
 
 ```markdown
 # 第3章 夜雨请帖
+
+章节类型: 线索
+冲突值: 3
+钩子DNA: 林昭-收到-请帖-落款死人
 
 本章目标: 请帖事件落地,把林昭从"被动查案"推向"主动入局"。
 
@@ -319,7 +347,7 @@
 风险与注意: 老周的态度别写成工具人,给一句他自己的理由
 ```
 
-约定解析行:`出场角色[:：]` 逗号分隔人名(`context_pack.py` 据此挑角色卡);`伏笔操作[:：]` 供人读,机器执行以 analysis 为准。
+约定解析行:`出场角色[:：]` 逗号分隔人名(`context_pack.py` 据此挑角色卡);`伏笔操作[:：]` 供人读,机器执行以 analysis 为准;`章节类型[:：]` / `冲突值[:：]` / `钩子DNA[:：]` 会进入上下文包的「本章类型提示」,并在 `check_ledger` 里与 analysis 对账。类型定义与矩阵见 `references/type-matrix.md`。
 
 **信息控制四字段**是审校 D5 的核对依据:正文泄露"必须隐藏"的内容视同事故 —— 读者/主角的知识差就是悬念本身。
 

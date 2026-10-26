@@ -255,5 +255,70 @@ def foreshadow_fp(title: str) -> str:
     return hashlib.sha1(norm.encode("utf-8")).hexdigest()[:10] if norm else ""
 
 
+# ---------------------------------------------------------------------------
+# 章节类型 / 伏笔 Tier / 钩子 DNA(章级叙事账;字段定义见 references/ledger-schema.md,
+# 类型矩阵见 references/type-matrix.md)
+# ---------------------------------------------------------------------------
+CHAPTER_TYPES = ("推进", "高潮", "过渡", "关系", "线索", "代价")
+
+# Tier=1 全书主线 / 2 弧线 / 3 章级线索。休眠阈值按"多少章没有任何节拍"算:
+# 章级线索 4 章不碰基本就凉了;弧线 12 章还值得救;全书主线 35 章才提示,避免每章刷屏。
+TIER_STALE_LIMITS = {1: 35, 2: 12, 3: 4}
+TIER_SCOPE = {1: "book", 2: "arc", 3: "chapter"}
+
+PLAN_FIELD = re.compile(r"^\s*(?:[-*+]\s+)?\*{0,2}([^:：*]{1,20}?)\*{0,2}\s*[:：]\s*(.*)$")
+
+
+def parse_plan_field(plan_text: str, field: str) -> str | None:
+    """取章计划里某个字段的值,容忍 `- ` 列表前缀、`**加粗**`、全角/半角冒号。
+
+    schema 约定的是 `出场角色[:：]`,旧实现只认行首半角冒号 —— 换一种写法就静默丢角色卡。
+    章节类型/冲突值/钩子 DNA 共用同一套解析,避免新增字段又踩一次格式坑。
+    """
+    for line in (plan_text or "").splitlines():
+        m = PLAN_FIELD.match(line)
+        if m and m.group(1).strip().strip("*").strip() == field:
+            return m.group(2).strip()
+    return None
+
+
+def dna_tokens(value: str) -> set[str]:
+    """把钩子 DNA 拆成结构词集合。示例:主角-发现-请帖-死人落款 → {主角,发现,请帖,死人落款}。
+
+    只保留 ≥2 字的词,避免"他/的"这类虚词把相似度冲高;没有分隔符时整串算一个词。
+    """
+    raw = [x.strip() for x in re.split(r"[-—–－/／、,，;；|:：\s]+", str(value or "")) if x.strip()]
+    toks = {x for x in raw if len(x) >= 2}
+    if not toks and len(str(value or "").strip()) >= 2:
+        toks = {str(value).strip()}
+    return toks
+
+
+def dna_jaccard(a: str, b: str) -> float:
+    """两个钩子 DNA 的结构相似度;任一方为空返回 0(不判相似)。"""
+    ta, tb = dna_tokens(a), dna_tokens(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
+
+
+def foreshadow_tier(f: dict) -> int | None:
+    """返回合法 Tier(1/2/3);缺失或非法返回 None(交给 check_ledger 报错)。"""
+    t = f.get("tier")
+    if isinstance(t, int) and not isinstance(t, bool) and 1 <= t <= 3:
+        return t
+    return None
+
+
+def foreshadow_stale_limit(tier: int | None, default: int = 15) -> int:
+    """Tier 专属休眠阈值;旧账缺 Tier 时沿用原来的 15 章。"""
+    return TIER_STALE_LIMITS.get(tier, default) if tier else default
+
+
+def foreshadow_tier_label(f: dict) -> str:
+    t = foreshadow_tier(f)
+    return f"T{t}" if t else "T?"
+
+
 def err(msg: str) -> None:
     print(f"ERROR: {msg}", file=sys.stderr)

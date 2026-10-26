@@ -12,7 +12,8 @@ import sys
 from pathlib import Path
 
 from _common import (analysis_path, ch_path, ch_file, count_words,
-                     force_utf8_stdio, load_json, plan_path, read_text)
+                     force_utf8_stdio, foreshadow_tier, load_json,
+                     parse_plan_field, plan_path, read_text)
 
 
 def review_verdict(project: Path, n: int) -> str | None:
@@ -59,6 +60,14 @@ def main() -> int:
     for name, status, note in steps:
         print(f"  [{status}] {name:<8} {note}")
 
+    if has_plan:
+        ptxt = read_text(plan_path(project, n))
+        ptype = parse_plan_field(ptxt, "章节类型")
+        pconf = parse_plan_field(ptxt, "冲突值")
+        pdna = parse_plan_field(ptxt, "钩子DNA")
+        if ptype or pconf or pdna:
+            print(f"  章型:{ptype or '未标'} | 冲突值:{pconf or '未标'} | 钩子DNA:{pdna or '未标'}")
+
     # 下一步
     if not has_plan:
         nxt = "写章计划(含节拍/出场角色/信息控制四字段/钩子),登记 planned 伏笔后重新取上下文"
@@ -80,10 +89,13 @@ def main() -> int:
     fofs = load_json(project / "ledger" / "foreshadowing.json", default={"foreshadows": []})["foreshadows"]
     urgent = [f for f in fofs if f.get("status") in ("planted", "advanced")
               and f.get("deadline_chapter") is not None and f["deadline_chapter"] - n <= 3]
+    urgent.sort(key=lambda f: (foreshadow_tier(f) or 9, f.get("deadline_chapter") or 9999))
     if urgent:
-        print("\n⚠ 临期伏笔(3 章内到期):")
+        print("\n⚠ 临期伏笔(3 章内到期,Tier 优先):")
         for f in urgent:
-            print(f"  - {f['id']} {f['title']}(最迟第 {f['deadline_chapter']} 章)")
+            t = foreshadow_tier(f)
+            tag = f"[T{t}] " if t else ""
+            print(f"  - {tag}{f['id']} {f['title']}(最迟第 {f['deadline_chapter']} 章)")
     # 提醒:未承接因果线
     setups = []
     for k in range(max(1, n - 3), n):

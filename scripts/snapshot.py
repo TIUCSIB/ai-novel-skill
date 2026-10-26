@@ -13,7 +13,8 @@ import json
 import sys
 from pathlib import Path
 
-from _common import analysis_path, force_utf8_stdio, load_json, read_text, today
+from _common import (analysis_path, force_utf8_stdio, foreshadow_tier, load_json,
+                     read_text, today)
 
 
 def main() -> int:
@@ -78,7 +79,9 @@ def main() -> int:
     L.append("## 伏笔台账")
     active = [f for f in fofs if f.get("status") not in ("resolved", "abandoned")]
     closed = [f for f in fofs if f.get("status") in ("resolved", "abandoned")]
-    for f in sorted(active, key=lambda x: (x.get("deadline_chapter") is None, x.get("deadline_chapter") or 0)):
+    for f in sorted(active, key=lambda x: (foreshadow_tier(x) or 9,
+                                           x.get("deadline_chapter") is None,
+                                           x.get("deadline_chapter") or 0)):
         dl = f.get("deadline_chapter")
         tag = f"最迟第{dl}章" if dl else "无硬期限"
         if dl and dl < current:
@@ -86,11 +89,15 @@ def main() -> int:
         elif dl and dl - current <= 5:
             tag = f"临近回收(最迟第{dl}章)"
         beats = " → ".join(f"第{b.get('chapter')}章{b.get('action')}" for b in f.get("beats", [])) or "尚无节拍"
-        L.append(f"- **{f['id']} {f['title']}** [{f.get('status')}] {tag}")
+        tier = foreshadow_tier(f)
+        tier_tag = f"[T{tier}] " if tier else ""
+        L.append(f"- **{tier_tag}{f['id']} {f['title']}** [{f.get('status')}] {tag}")
         L.append(f"  - {f.get('description', '')}")
         L.append(f"  - 节拍:{beats}")
         if f.get("payoff_plan"):
             L.append(f"  - 回收计划:{f['payoff_plan']}")
+        if f.get("min_payoff_spacing"):
+            L.append(f"  - 最小回收间隔:{f['min_payoff_spacing']} 章")
     if closed:
         L.append(f"- 已归档 {len(closed)} 条:" + "、".join(f"{f['id']}{f['title']}({f.get('status')})" for f in closed))
     if not fofs:
@@ -113,7 +120,13 @@ def main() -> int:
             if apath.exists():
                 a = load_json(apath)
                 summary = (a.get("summary") or "").replace("\n", " ")
-                L.append(f"- **第 {n} 章《{a.get('title', '')}》**:{summary}")
+                meta = []
+                if a.get("type"):
+                    meta.append(f"类型:{a['type']}")
+                if a.get("conflict") is not None:
+                    meta.append(f"冲突:{a['conflict']}")
+                prefix = f" [{' | '.join(meta)}]" if meta else ""
+                L.append(f"- **第 {n} 章《{a.get('title', '')}》**{prefix}:{summary}")
             else:
                 L.append(f"- **第 {n} 章**:⚠ 缺 analysis")
         L.append("")
