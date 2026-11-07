@@ -17,6 +17,7 @@ import argparse
 import json
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 from _common import (CONNECTOR, CONNECTOR_LIMIT, DIALOG_EXPLAIN, DIALOG_EXPLAIN_LIMIT,
@@ -53,6 +54,24 @@ SPEAK = re.compile(r"(.{0,50})[“「][^”」]{1,400}[”」]")
 LITERARY = re.compile(r"之|其|方|乃|岂|焉|哉|矣|乎|吾|汝|尔|阁下|老夫|在下|晚生")
 COLLOQUIAL = re.compile(r"老子|俺|咱|呗|咋|啥|喽|嘛|哎哟|娘的|他娘的|得嘞")
 EXCL = re.compile(r"[！!]")
+# ---- 桥段与收尾限额(v3.13;报告层,判交人工)----
+# 来源:chinese-novelist-skill v2.3.2 的量化硬指标。三条限额抓的都是
+# "单次合法、重复到读者出戏"的桥段级重复 —— 词表是启发式,数字只是把
+# "同一桥段用滥了"变成可数的读数;改不改编交作者与审校。
+# ① 关怀类重复桥段(送饭/递茶/掖被角):升温必须靠新动作或旧动作的新意义,
+#    不是同动作重复 —— 全书 ≤2 次。
+CARE_LEX = re.compile(
+    r"送饭|送来饭菜|递茶|递水|端来|端上|熬了?粥|熬了?汤|煎了?药|"
+    r"掖被|盖好?被|掖好|披衣|添衣|添了?炭")
+# ② 格言式收尾(章末哲理句):全书 ≤3 次,且连续两章不得同型。
+APHORISM = re.compile(
+    r"命运|人生|人心|世界从来|这个世界|时代|历史总是|永远|从来|终究|"
+    r"不过是|总有一天|总有一日|这就是|从此再无|再也回不去|谁也逃不过")
+# ③ 标志小动作(转簪/摩挲/捏杯沿类):同一动作短语全书 ≤8 次。
+#    用"跨章重复 + 含身体/动作语素"的 4 字短语近似;短语本身给作者 grep 用。
+GESTURE_HINT = re.compile(
+    r"手|指|肩|眼|眸|眉|唇|攥|捏|摩挲|捻|搓|抚|敲|叩|绞|把玩|把弄|转着|掂")
+GESTURE_CAP = 8
 # 人味代理(打断/省略/沉默/受挫)与去噪函数已上收到 _common.quota_proxies
 # (与 style_stats 共用同一套判式,不再本地重复定义 —— 曾出现过两边正则不同步的洞)
 
@@ -103,6 +122,59 @@ def voice_row(lines: list[str]) -> dict:
         "literary": len(LITERARY.findall(joined)) / total * 1000,
         "colloquial": len(COLLOQUIAL.findall(joined)) / total * 1000,
     }
+
+
+def gesture_phrases(texts: dict[int, str], nouns: set[str],
+                    min_ch: int = 3, min_total: int = 6) -> list[tuple[str, int, int]]:
+    """跨章重复且含身体/动作语素的 4 字短语(标志小动作嫌疑)。
+
+    返回 [(短语, 出现章数, 全书总次数)],按总次数降序。
+    4 字粒度取自口头禅镜像的同款思路;"摩挲"这类 2 字词单独统计误报会高,
+    短语化之后既压误报,又给作者一个可直接 grep 的抓手。
+    4-gram 按 CJK 连串逐段切,不跨句拼接(跨句的"下他摩挲"是拼接噪音,不是短语)。
+    """
+    per_ch: dict[str, set[int]] = {}
+    total: dict[str, int] = {}
+    for n, t in sorted(texts.items()):
+        grams: Counter = Counter()
+        for run in re.findall(r"[\u4e00-\u9fff]+", t):
+            grams.update(run[i:i + 4] for i in range(len(run) - 3))
+        for g, c in grams.items():
+            per_ch.setdefault(g, set()).add(n)
+            total[g] = total.get(g, 0) + c
+    out = []
+    for g, chs in per_ch.items():
+        if (len(chs) >= min_ch and total.get(g, 0) >= min_total
+                and GESTURE_HINT.search(g) and not any(nm in g for nm in nouns)):
+            out.append((g, len(chs), total[g]))
+    out.sort(key=lambda x: (-x[2], x[0]))
+    return out
+
+
+def aphorism_endings(texts: dict[int, str]) -> list[tuple[int, str]]:
+    """格言式收尾:末行无对话、含哲理词的短句章末(启发式,只报线索)。"""
+    out: list[tuple[int, str]] = []
+    for n, t in sorted(texts.items()):
+        lines = [l.strip() for l in t.splitlines() if l.strip() and not l.strip().startswith("#")]
+        if not lines:
+            continue
+        last = lines[-1]
+        if "“" in last or "」" in last or '"' in last:
+            continue  # 对话收尾不算
+        body = last.strip("。！？…—　 ")
+        if 4 <= len(body) <= 40 and APHORISM.search(body):
+            out.append((n, last[:42]))
+    return out
+
+
+def care_scenes(texts: dict[int, str]) -> list[tuple[int, str]]:
+    """关怀类桥段(送饭/递茶/掖被角)全书出现点,带上下文摘录。"""
+    out: list[tuple[int, str]] = []
+    for n, t in sorted(texts.items()):
+        for m in CARE_LEX.finditer(t):
+            frag = t[max(0, m.start() - 12):m.end() + 16].replace("\n", "")
+            out.append((n, frag.strip()))
+    return out
 
 
 def main() -> int:
@@ -348,6 +420,38 @@ def main() -> int:
         out()
     out("> 另有两项**无法机械统计**,只能由盲审 D7 与章计划「人味意图」核验:"
         "与主线无关的细节、不闭合的线头。")
+    out()
+
+    # ---- 七、桥段与收尾限额(报告层;判交人工)----
+    out("## 七、桥段与收尾限额(单次合法、重复到读者出戏的桥段级重复)")
+    out()
+    out("> 三条参考限额:关怀类重复桥段全书 ≤2 次 / 格言式收尾全书 ≤3 次且不连续两章同型 / "
+        "同一标志小动作全书 ≤8 次。词表是启发式 —— 命中≠定罪,先看重复是否改变了"
+        "处境、关系或含义;仅复述同一效果的,删减或换新动作(升温必须靠新动作或"
+        "旧动作的新意义,不是同动作重复)。")
+    out()
+    care = care_scenes(texts)
+    out(f"**① 关怀类重复桥段**(送饭/递茶/掖被角类):全书 **{len(care)} 处**"
+        + (f"(限额 ≤2)" if care else "")
+        + (" —— 超限处逐条看:" if care else ""))
+    for n, frag in care[:args.top]:
+        out(f"- 第{n}章:「…{frag}…」")
+    out()
+    aph = aphorism_endings(texts)
+    out(f"**② 格言式收尾**(章末哲理句):疑似 **{len(aph)} 章**"
+        + ("(限额 ≤3 且不连续两章同型):" if aph else "。"))
+    for n, line in aph[:args.top]:
+        out(f"- 第{n}章末:「{line}」")
+    out()
+    gest = gesture_phrases(texts, nouns)
+    over = [g for g in gest if g[2] > GESTURE_CAP]
+    out(f"**③ 标志小动作**(跨章重复的身体动作短语):疑似 **{len(gest)} 条**"
+        + (f",其中超过全书 ≤{GESTURE_CAP} 次限额的 {len(over)} 条:" if over else "。"))
+    for g, nch, tot in (over or gest)[:args.top]:
+        mark = "⚠" if tot > GESTURE_CAP else " "
+        out(f"- {mark} 「{g}」{tot} 次 / {nch} 章 —— 可直接全书搜索该短语定位")
+    if not gest:
+        out("未发现跨章重复的身体动作短语。")
     out()
 
     if args.out:

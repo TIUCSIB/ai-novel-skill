@@ -1,10 +1,11 @@
-"""台账五维反查:按角色/伏笔/道具/地点/关键词精准召回历史章节,不读长文。
+"""台账六维反查:按角色/伏笔/道具/地点/关键词/数字事实精准召回历史,不读长文。
 
 用法:
-  python query_ledger.py <项目目录> [-c 角色名] [-t 伏笔词] [-i 道具名] [-l 地点] [-k 关键词] [--recent N] [--full]
+  python query_ledger.py <项目目录> [-c 角色名] [-t 伏笔词] [-i 道具名] [-l 地点] [-k 关键词]
+                        [--term 术语] [-f 数字事实] [--recent N] [--full]
 
-数据源:analysis/NNN.json(逐章结构化事实)+ ledger/*(角色/组织/伏笔)+ timeline.jsonl。
-五维可组合,命中按章去重。写作新章前,凡涉及久未露面的人物、旧伏笔、旧道具,先跑本脚本。
+数据源:analysis/NNN.json(逐章结构化事实)+ ledger/*(角色/组织/伏笔/术语/事实)+ timeline.jsonl。
+六维可组合,命中按章去重。写作新章前,凡涉及久未露面的人物、旧伏笔、旧道具、旧数字,先跑本脚本。
 """
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ def load_all(project: Path) -> dict:
         "fofs": load_json(project / "ledger" / "foreshadowing.json", default={"foreshadows": []})["foreshadows"],
         "orgs": load_json(project / "ledger" / "organizations.json", default={"organizations": []})["organizations"],
         "terms": load_json(project / "ledger" / "terms.json", default={"terms": []})["terms"],
+        "facts": load_json(project / "ledger" / "facts.json", default={"facts": []})["facts"],
         "timeline": [],
     }
     adir = project / "analysis"
@@ -96,12 +98,14 @@ def main() -> int:
     ap.add_argument("-l", "--location", help="按地点反查发生章节(依赖 analysis.location 字段)")
     ap.add_argument("-k", "--keyword", help="全库关键词搜索(analysis+timeline+台账)")
     ap.add_argument("--term", help="按术语反查:首现章/最小解释/真相/揭示计划(新名词首现管理)")
+    ap.add_argument("-f", "--fact", help="按数字事实反查:登记值/首现章/修订史(时间线/年龄/金额/人数等硬数字,先查账再动笔)")
     ap.add_argument("--recent", type=int, help="最近 N 章速览")
     ap.add_argument("--at", type=int, help="时点查询(配合 -c):返回第 N 章结束时的角色状态(事件溯源)")
     ap.add_argument("--full", action="store_true", help="输出每章完整摘要与钩子")
     args = ap.parse_args()
 
-    if not any((args.character, args.thread, args.item, args.location, args.keyword, args.term, args.recent)):
+    if not any((args.character, args.thread, args.item, args.location, args.keyword, args.term,
+                args.fact, args.recent)):
         print("请指定查询维度,例如:\n"
               "  python query_ledger.py <项目> --recent 3      # 最近3章速览\n"
               "  python query_ledger.py <项目> -c 林昭         # 角色出场史+当前状态\n"
@@ -109,6 +113,7 @@ def main() -> int:
               "  python query_ledger.py <项目> -i 残玉         # 道具流转\n"
               "  python query_ledger.py <项目> -l 青石镇       # 地点关联章节\n"
               "  python query_ledger.py <项目> --term 回风倒走  # 术语:首现/解释/揭示计划\n"
+              "  python query_ledger.py <项目> -f 主角年龄      # 数字事实:登记值/首现章\n"
               "  python query_ledger.py <项目> -k 血字         # 全库关键词")
         return 0
 
@@ -240,6 +245,21 @@ def main() -> int:
                     head.append(f"  认知复杂度:{t['reader_complexity']}")
                 head.append(f"  读者应知:{t.get('brief', '')}")
                 head.append(f"  完整真相:{t.get('truth', '')}")
+
+    # ---- -f 数字事实 ----
+    if args.fact:
+        if not d["facts"]:
+            head.append("[提示] 本项目数字事实账为空(ledger/facts.json)——"
+                        "正文中要写的硬数字(时间线/年龄/金额/人数)先在 analysis.facts 登记,禁止现场编造。")
+        for f in d["facts"]:
+            blob = json.dumps(f, ensure_ascii=False)
+            if args.fact in blob:
+                upd = f" | 第{f['updated_chapter']}章修订" if f.get("updated_chapter") else ""
+                cat = f"[{f['category']}]" if f.get("category") else ""
+                head.append(f"【事实】{f['id']} {f['name']}{cat} = {f.get('value', '?')} "
+                            f"| 首现第{f.get('first_chapter', '?')}章{upd}")
+                if f.get("note"):
+                    head.append(f"  备注:{f['note']}")
 
     # ---- -k 关键词 ----
     if args.keyword:

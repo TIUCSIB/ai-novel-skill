@@ -34,6 +34,7 @@
 | `phase` | `setup` → `outline` → `writing` → `complete`,只进不退 |
 | `current_chapter` | 下一章要写的章号(= 已完成最大章 + 1) |
 | `completed_chapters` | 已完成并回写台账的章号列表 |
+| `finalized_chapters` | **定稿章号列表(选填,v3.14)**:用户确认"不再改"的章。定稿 = 只读 —— `apply_analysis`(含 `--replace`)直接拒绝、`check_ledger` 每次核对正文与 `chapters/final/NNN.md` 副本一致(被改动即 ERROR);改动需用户授权后 `finalize.py N --unfinalize --confirm` 解除。旧项目缺省该字段 = 无定稿章,一切如旧 |
 | `schema_version` | 台账格式版本。新项目为 `2`;旧项目缺省时不强制新检查,`--force` 也不会自动升级。手动补 `2` 后,已完成章缺 `type` 会 WARN |
 
 ---
@@ -207,6 +208,36 @@
 
 ---
 
+## ledger/facts.json — 数字事实账(先登记后动笔)
+
+```json
+{
+  "facts": [
+    {
+      "id": "FC-001",
+      "name": "北凉灭国",
+      "category": "时间线",
+      "value": "十一年前",
+      "note": "男主幼年旧事,与第7章的'整整十年'表述冲突时以台账为准",
+      "first_chapter": 1,
+      "updated_chapter": null
+    }
+  ]
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `name` | 事实名(如"主角年龄"/"北凉灭国"/"赏金数目"),全账唯一;analysis.facts 同名重登记,同值跳过、异值按"后章修订"更新并留痕 |
+| `category` | **选填**推荐维度:`时间线` / `年龄` / `时长` / `金额` / `人数` / `数量` / `其他`(自由文本,不强校验) |
+| `value` | 登记值(正文必须与它一致;要改先改台账) |
+| `note` | 备注/冲突仲裁说明(选填) |
+| `first_chapter` | 首次登记章;`updated_chapter` 记录最近一次值修订章 |
+
+登记纪律(**这是流程规则,不只是格式**):正文要写的数字事实 —— 时间线("X年前")、角色年龄、时长、金额、人数 —— 台账没有的**先登记再写,禁止现场编造**。时间线对不上,几乎都是各章现场编数导致的。`context_pack.py` 出「P1 数字事实卡」,`query_ledger.py -f <词>` 反查;由 analysis 的 `facts` 字段入账(见下),`--replace` 不撤销事实(重写章通常重立同样数字,值变了走修订留痕)。
+
+---
+
 ## ledger/timeline.jsonl — 事件日志
 
 每行一个对象,append-only,按章递增:
@@ -271,6 +302,11 @@
   "world_facts": [
     { "rule": "血字请帖需以收帖人生辰八字为引", "note": "神秘人口述" }
   ],
+  "facts": [
+    { "name": "沈半城死亡", "category": "时间线", "value": "十年前",
+      "note": "请帖落款的矛盾点,回收时按此校对" },
+    { "name": "血字请帖字数", "category": "数量", "value": "二十一个字" }
+  ],
   "quality": { "consistency": 8, "pacing": 7, "voice": 8, "hook": 9 },
   "issues_next": ["沈半城'已死'的证据链只在对话里,下一章需补一个物证"],
   "depends_on": [
@@ -284,7 +320,7 @@
 
 | 字段 | 必填 | 说明 |
 |---|---|---|
-| `summary` | ✅ | 150-300 字,覆盖事件/决策/状态变化/钩子;`context_pack.py` 直接取它做前情摘要 |
+| `summary` | ✅ | 150-300 字,覆盖事件/决策/状态变化/钩子;`context_pack.py` 直接取它做前情摘要。**写法三分(v3.13,防"下章自动和解")**:① 事件与后果(只写关键事件及其造成的变化,不流水账、不写"关系更复杂"式空泛总结);② 人物处境 —— 对影响后文的角色区分**已知/尚未知/误以为**,区分**公开表态/真实打算/已完成的行动**,记录未消解的情绪与关系变化及原因;③ 行动条件与未了事项 —— 影响后续的时间/位置/伤势/物品归属,尚未兑现的承诺、代价、疑问。只记正文已确立的事实,未确定标"未明";关键变化注明来源场景。改稿时**更新原章摘要**,不追加互相矛盾的记录 |
 | `type` | 建议 | 章节类型:`推进/高潮/过渡/关系/线索/代价`。新项目 `schema_version >= 2` 时已完成章缺省会 WARN;类型矩阵见 `references/type-matrix.md` |
 | `conflict` | 建议 | 本章冲突值 1-5:1 日常 / 2 摩擦 / 3 明确转折 / 4 大战 / 5 卷峰。用于张力曲线与高潮章检查 |
 | `hook_dna` | 建议 | 钩子结构指纹(3-5 个短词,如 `主角-发现-请帖-死人落款`);与章计划 `钩子DNA` 比对,漂移或相邻章同构会 WARN |
@@ -300,6 +336,7 @@
 | `world_facts` | | 新确立的世界规则 |
 | `terms` | | 本章**首次出现**的新术语:`{"term","brief","truth","reveal_chapter"}`;brief 是读者此刻应知的最小解释,truth 是完整真相(留到揭示章)。apply_analysis 落 `ledger/terms.json`,同词重复登记不覆盖首现 |
 | `revealed_terms` | | 本章**揭示真相**的术语名数组(字符串);apply 把对应 terms 标记 revealed 并记 revealed_chapter |
+| `facts` | | 本章**确立或修订**的数字事实:`{"name","value","category","note"}`(时间线/年龄/时长/金额/人数等硬数字,正文要写而台账没有的必须先登记)。apply_analysis 落 `ledger/facts.json`:同名同值跳过,异值按"后章修订"更新并留痕。登记纪律与查询见 ledger/facts.json 一节 |
 | `quality` | | 四项 0-10 分:`consistency` 一致性 / `pacing` 节奏 / `voice` 文风 / `hook` 钩子 |
 | `issues_next` | | 给下一章的注意事项,会进入下一章上下文包 |
 

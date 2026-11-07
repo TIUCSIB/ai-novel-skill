@@ -343,7 +343,8 @@ def main() -> int:
                         ("organizations.json", {"organizations": []}),
                         ("foreshadowing.json", {"foreshadows": []}),
                         ("world_rules.json", {"rules": []}),
-                        ("terms.json", {"terms": []})):
+                        ("terms.json", {"terms": []}),
+                        ("facts.json", {"facts": []})):
         p = root / "ledger" / name
         if not p.exists():
             save_json(p, empty)

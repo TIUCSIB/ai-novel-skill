@@ -38,7 +38,9 @@ def main() -> int:
     done = set(book.get("completed_chapters", []))
 
     print(f"# 循环状态:第 {n} 章 ——《{book.get('title', '')}》")
-    print(f"阶段:{book.get('phase')} | 已完成 {len(done)} 章 | 下一章:{book.get('current_chapter')}")
+    fins = sorted(book.get("finalized_chapters") or [])
+    print(f"阶段:{book.get('phase')} | 已完成 {len(done)} 章(定稿 {len(fins)} 只读)"
+          f" | 下一章:{book.get('current_chapter')}")
 
     steps = []
     has_plan = plan_path(project, n).exists()
@@ -56,6 +58,9 @@ def main() -> int:
     steps.append(("章分析", "✓" if has_a else "✗", f"analysis/{ch_file(n)}.json"))
     committed = n in done
     steps.append(("台账回写+提交", "✓" if committed else "✗", "apply_analysis + git"))
+    finalized = n in fins
+    steps.append(("定稿", "📌 只读" if finalized else ("□(可选,用户确认后)" if committed else "—"),
+                  "finalize.py N(前置:审校≥80 + 0 ERROR + 已提交)"))
 
     for name, status, note in steps:
         print(f"  [{status}] {name:<8} {note}")
@@ -73,8 +78,10 @@ def main() -> int:
         nxt = "写章计划(含节拍/出场角色/信息控制四字段/钩子),登记 planned 伏笔后重新取上下文"
     elif not has_ch:
         nxt = "运行 context_pack 组装上下文,写正文(先跑 query_ledger 反查涉及的旧人物/旧伏笔)"
+    elif committed and finalized:
+        nxt = "本章已定稿(只读)并入库。下一章 %d;若本章为弧收官,先做弧末八类审计与状态校准" % (n + 1)
     elif committed:
-        nxt = "本章已入库。下一章 %d;若本章为弧收官,先做弧末八类审计与状态校准" % (n + 1)
+        nxt = "本章已入库。下一章 %d;若本章为弧收官,先做弧末八类审计与状态校准;用户确认不再改后可 finalize %d 定稿" % (n + 1, n)
     elif verdict == "REWRITE":
         nxt = "按整改清单重写本章并重新盲审;重写两次仍不过,停下向用户说明根因"
     elif not verdict:
@@ -82,7 +89,7 @@ def main() -> int:
     elif not has_a:
         nxt = "写 analysis/%s.json(depends_on/sets_up 别漏),运行 apply_analysis %d" % (ch_file(n), n)
     else:
-        nxt = "运行 apply_analysis %d,git 提交,向用户闸门汇报" % n
+        nxt = "运行 apply_analysis %d,git 提交,向用户闸门汇报;用户确认不再改后可 finalize %d 定稿" % (n, n)
     print(f"\n下一步:{nxt}")
 
     # 提醒:临期伏笔

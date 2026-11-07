@@ -120,6 +120,49 @@ HALFWIDTH_CJK = re.compile(r"[\u4e00-\u9fff][,.!?;:][\u4e00-\u9fff]")
 DASH_LIMIT = 3.0       # 破折号,次/千字
 ELLIPSIS_LIMIT = 3.0   # 省略号,次/千字
 
+# ---- 真人参考区间(只对照不判罪)----
+# 来源:oh-story-claudecode v0.10.0 的预注册对照实测 —— 七猫三本完结书(玄幻/古言/现言)
+# 前 30 章的"真人"读数:短段(≤20字)占比 ≈19%、叙述句长中位数 ≈38.9 字、
+# 省略号 ≈1.1 次/千字(对话 0.83、叙述 0.27)。同一测试里,含"奖励短句"技法的
+# skill 组短段占比 45-59%、句长中位数 17-21 字 —— 比"没上 skill"的底座(42%)更碎。
+# 教训(v3.13 收录):**任何"奖励短句/单句成段"的写法指导都可能把产出推向电报体**;
+# 这三个数字只作对照锚点 —— 单章偏离不是罪(题材/场景差异大),连续整书偏离才交人工复核。
+HUMAN_REF_SHORT_PARA = 0.19    # 短段(≤20字)占比
+HUMAN_REF_SENT_MEDIAN = 38.9   # 叙述句长中位数(字)
+HUMAN_REF_ELLIPSIS = 1.1       # 省略号 次/千字
+HUMAN_REF_SOURCE = "真人参考"   # 区间来源标签(报告行前缀);被项目级覆盖时换成"本书语料基线"
+SHORT_PARA_CHARS = 20          # "短段"边界(字)
+
+
+def load_human_ref_override(project: Path) -> str | None:
+    """style/human-ref.json 覆盖内置真人参考区间(corpus_stats.py --write-ref 生成)。
+
+    用途:用户拿自己的对标书/旧作语料跑过 corpus_stats 后,把"专属真人锚点"
+    替换内置的通用锚点 —— 报告行从「真人参考 ≈38.9 字」变为「本书语料基线 ≈33.5 字」。
+    值域护栏:荒谬值(中位 5-120 字之外等)拒绝并警告,防坏基线污染报告。
+    返回来源标签;无覆盖返回 None(一切如 v3.13)。
+    """
+    global HUMAN_REF_SHORT_PARA, HUMAN_REF_SENT_MEDIAN, HUMAN_REF_ELLIPSIS, HUMAN_REF_SOURCE
+    p = Path(project) / "style" / "human-ref.json"
+    if not p.exists():
+        return None
+    try:
+        d = load_json(p)
+    except Exception:
+        return None
+    med, sp, el = d.get("sent_median"), d.get("short_para"), d.get("ellipsis")
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (med, sp, el)):
+        return None
+    if not (5 <= med <= 120 and 0 <= sp <= 1 and 0 <= el <= 20):
+        print("[Warn] style/human-ref.json 数值超出护栏(中位 5-120 字 / 占比 0-1 / 省略号 0-20/千),"
+              "已忽略 —— 重跑 corpus_stats --write-ref 生成。", file=sys.stderr)
+        return None
+    HUMAN_REF_SENT_MEDIAN = float(med)
+    HUMAN_REF_SHORT_PARA = float(sp)
+    HUMAN_REF_ELLIPSIS = float(el)
+    HUMAN_REF_SOURCE = "本书语料基线"   # 短标签进报告行;json 里的 source 字段留完整出处
+    return HUMAN_REF_SOURCE
+
 # ---- 感官通道(启发式词表,只报数):AI 只写"看见",真人写气味/声音/触感/冷热疼痒 ----
 SENSES = {
     "视觉": re.compile(r"看|瞧|盯|瞥|瞄|目光|视线|眼神|颜色|光亮|发亮|昏暗|阴影"),
@@ -199,6 +242,7 @@ def narration_metrics(text: str) -> dict | None:
     return {
         "n": len(lens),
         "mean": mean,
+        "median": sorted(lens)[len(lens) // 2],  # 中位数对"个别超长句"不敏感,比均值更接近体感
         "std": std,
         "short_ratio": sum(1 for l in lens if l < SHORT_SENT) / len(lens),
         "longest": max(lens),
@@ -244,19 +288,24 @@ def paragraph_rhythm(text: str) -> dict:
     统计**全部段落**(含"两匹快马。"这类短提示段) —— 病稿的典型特征正是把本该
     并入上下文的短语也单独成行,所以不能只数长叙述段(实测那样两版无差别)。
 
-    返回 {paras, one_sent, one_ratio, longest_run, run_start_line, density}。
+    返回 {paras, one_sent, one_ratio, longest_run, run_start_line, density, short20_ratio}。
     density = 段落数 / 千字,句级指标完全看不见的维度。
+    short20_ratio = 短段(≤20字)占比,对照真人参考 ≈19%(只报数,不判罪)。
     """
     flags: list[tuple[int, bool]] = []
+    short20 = 0
     for idx, raw in enumerate(text.splitlines()):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
         sents = [s for s in SENT_SPLIT.split(line) if len(s.strip()) >= 2]
         flags.append((idx + 1, len(sents) <= 1))
+        if len(line) <= SHORT_PARA_CHARS:
+            short20 += 1
     if not flags:
         return {"paras": 0, "one_sent": 0, "one_ratio": 0.0,
-                "longest_run": 0, "run_start_line": 0, "density": 0.0}
+                "longest_run": 0, "run_start_line": 0, "density": 0.0,
+                "short20_ratio": 0.0}
     one = sum(1 for _, flag in flags if flag)
     best, cur, start = 0, 0, 0
     for lineno, flag in flags:
@@ -274,6 +323,7 @@ def paragraph_rhythm(text: str) -> dict:
         "longest_run": best,
         "run_start_line": start,
         "density": len(flags) / wc * 1000,
+        "short20_ratio": short20 / len(flags),
     }
 
 
@@ -699,7 +749,9 @@ def report_chapter(n: int, text: str, prevs: dict[int, str], window: int,
             warns.append(f"最长句 {sent['longest']} 字(>{LONG_SENT})—— 长句口条:读一遍,断不开就拆成两三句")
         if sent["comma_max"] >= COMMA_RUN:
             warns.append(f"单句逗号最多 {sent['comma_max']} 个(≥{COMMA_RUN})—— 一逗到底,给句子留出口")
-        oks.append(f"叙述句 {sent['n']} 句,均长 {sent['mean']:.1f} 字")
+        oks.append(f"叙述句 {sent['n']} 句,均长 {sent['mean']:.1f} 字,中位 {sent['median']} 字"
+                   f"({HUMAN_REF_SOURCE}中位 ≈{HUMAN_REF_SENT_MEDIAN:g} 字 —— 只对照不判罪;连续整书远低于此"
+                   f"=电报体倾向,先复核技法是否在奖励短句)")
 
     # --- 段落节奏:一句一段(句级指标完全看不见的排版级 AI 味)---
     # 单句率只报数不作定罪依据(对白密集章天然偏高);定罪看段密度与最长连续串。
@@ -720,7 +772,9 @@ def report_chapter(n: int, text: str, prevs: dict[int, str], window: int,
                          f"—— 整片场景被拆成一行一句,每句权重相同、强调失效。"
                          f"按意群合并相邻段(一个动作+一个反应+一句判断),留 2-3 处落锤句")
         else:
-            oks.append(f"单句段 {para['one_ratio']:.0%},最长连续 {para['longest_run']} 段")
+            oks.append(f"单句段 {para['one_ratio']:.0%},最长连续 {para['longest_run']} 段;"
+                       f"短段(≤{SHORT_PARA_CHARS}字)占比 {para['short20_ratio']:.0%}"
+                       f"({HUMAN_REF_SOURCE} ≈{HUMAN_REF_SHORT_PARA:.0%} —— 对白密集章天然偏高,只对照不判罪)")
 
     # --- 连续说明文段:叙述者中断场景连讲两段以上背景/原理 ---
     for e in m["expo"]:
@@ -793,7 +847,9 @@ def report_chapter(n: int, text: str, prevs: dict[int, str], window: int,
         warns.append(f"省略号 {m['ellipsis'] / wcs * 1000:.1f}/千字(>{ELLIPSIS_LIMIT:g})—— 留白依赖;"
                      f"把话说完,或换动作收尾")
     else:
-        oks.append(f"省略号 {m['ellipsis'] / wcs * 1000:.1f}/千字")
+        oks.append(f"省略号 {m['ellipsis'] / wcs * 1000:.1f}/千字"
+                   f"({HUMAN_REF_SOURCE} ≈{HUMAN_REF_ELLIPSIS:g}/千字,对白内为主 —— 0 也不是美德,"
+                   f"把话截在半截本就是真人的说话方式之一)")
     if m["punct_repeat"]:
         warns.append(f"重复标点 {len(m['punct_repeat'])} 处(如「{'」「'.join(m['punct_repeat'][:2])}」)"
                      f"—— 机械错误,顺手改掉")
@@ -903,6 +959,7 @@ def main() -> int:
                     help="复读率警报阈值;缺省=全书基线中位数×1.8(不低于 0.15)")
     args = ap.parse_args()
     project = Path(args.project)
+    load_human_ref_override(project)  # 项目级专属锚点覆盖内置真人参考(无文件则不生效)
 
     book = load_json(project / "book.json")
     done = sorted(book.get("completed_chapters", []))

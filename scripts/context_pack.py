@@ -38,6 +38,7 @@ SECTION_CAPS = {
     "P1 出场角色卡": 2200,
     "P1 世界硬规则": 1200,
     "P1 文风约束": 600,
+    "P1 数字事实卡": 700,
     "P2 伏笔提醒": 1800,
 }
 
@@ -702,6 +703,24 @@ def main() -> int:
                            "至少留一处只给画面/体感、不给名字;其余错开到后续章"
                            "(reader-clarity 知识配额;直觉判断归审校)")
         add("P1 术语卡", "\n" + "\n".join(lines), caps.get("P1 术语卡"))
+
+    # --- 数字事实卡(先登记后动笔):登记过的硬数字摆眼前,防各章现场编数 ---
+    # 时间线对不上,几乎都是各章编数导致的;本章计划涉及的排前,其余小账顺带可见。
+    facts_all = load_json(project / "ledger" / "facts.json", default={"facts": []})["facts"]
+    if facts_all:
+        hit_facts = [f for f in facts_all
+                     if f.get("name", "@@") in plan_text or str(f.get("name", ""))[:2] in plan_text]
+        shown = (hit_facts or facts_all)[:12]
+        lines = ["## P1 数字事实卡(已登记的硬数字 —— 正文要写而这里没有的数字,"
+                 "先在 analysis.facts 登记再写,禁止现场编造)"]
+        for f in shown:
+            upd = f",第{f['updated_chapter']}章修订" if f.get("updated_chapter") else ""
+            lines.append(f"- 【{f['name']}】= {f.get('value', '?')}"
+                         f"(首现第{f.get('first_chapter', '?')}章{upd})"
+                         + (f" — {f['note']}" if f.get("note") else ""))
+        if len(facts_all) > len(shown):
+            lines.append(f"- 共 {len(facts_all)} 条,其余用 query_ledger.py -f <词> 反查")
+        add("P1 数字事实卡", "\n" + "\n".join(lines), caps.get("P1 数字事实卡"))
 
     # --- 细节召回(BM25):用本章计划查已写正文,把字面相关的旧场景端到眼前 ---
     # RAG 的"检索→增强"环,零依赖实现;与台账分工:账本管事实,这里管原文画面。

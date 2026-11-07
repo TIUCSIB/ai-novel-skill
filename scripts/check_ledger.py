@@ -546,6 +546,26 @@ def main() -> int:
         if re.search(r"写得(很)?棒|完全符合要求|无可挑剔", rtxt):
             W(f"第 {n} 章评审含空洞肯定语 —— 出现即视为该维度未审(rubric 三·7)")
 
+    # --- 定稿完整性(v3.14):定稿章 = 只读,与运行模式无关,每次都核 ---
+    # 正文被改或备份丢失都是硬伤:台账与审校结论都建立在定稿版之上,底座动了
+    # 一切后续结论作废。改定稿章的唯一合法路径是先解除定稿(需用户授权)。
+    finalized = sorted(int(x) for x in (book.get("finalized_chapters") or []))
+    for n in finalized:
+        cur, bak = ch_path(project, n), project / "chapters" / "final" / f"{ch_file(n)}.md"
+        if not bak.exists():
+            E(f"第 {n} 章已定稿但定稿副本缺失(chapters/final/{ch_file(n)}.md)—— "
+              f"备份链断裂;从 git tag final-{ch_file(n)} 恢复副本后再继续")
+            continue
+        if not cur.exists():
+            E(f"第 {n} 章已定稿但正文文件丢失 —— 从副本或 git 恢复")
+            continue
+        if read_text(cur) != read_text(bak):
+            E(f"第 {n} 章已定稿(只读)但正文与定稿副本不一致 —— 被改动了。"
+              f"合法路径:向用户确认后 finalize.py <项目> {n} --unfinalize --confirm "
+              f"解除定稿再重写;或 git checkout 恢复 chapters/{ch_file(n)}.md")
+    if finalized:
+        OK(f"定稿章完整性核对通过({len(finalized)} 章:{'、'.join(map(str, finalized))})")
+
     report(errors, warns, oks)
     return 1 if errors else 0
 

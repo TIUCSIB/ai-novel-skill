@@ -225,6 +225,13 @@ def main() -> int:
         return 1
 
     book = load_json(project / "book.json")
+    if n in (book.get("finalized_chapters") or []):
+        # 定稿章只读(v3.14):--replace 与普通回写都拒绝 —— 锁的是整个改稿通道
+        print(f"ERROR: 第 {n} 章已定稿(只读)。改定稿章的合法路径:向用户确认后"
+              f" finalize.py {project} {n} --unfinalize --confirm 解除定稿,"
+              f"再走标准重写流程(validate_edit → 自检 → 重写 analysis → --replace)。",
+              file=sys.stderr)
+        return 1
     cj = project / "ledger" / "characters.json"
     fj = project / "ledger" / "foreshadowing.json"
     wj = project / "ledger" / "world_rules.json"
@@ -524,6 +531,51 @@ def main() -> int:
             print(f"  ✗ {e}")
         return 1
 
+    # ---- 应用:数字事实账(先登记后动笔的机器依据) ----
+    # 数字事实=时间线/年龄/时长/金额/人数/数量等"写错就吃书"的硬数字。
+    # 纪律:正文要写而台账没有的数字,先在 analysis.facts 登记再写,禁止现场编造
+    # —— 时间线对不上,几乎都是各章现场编数导致的。同名重登记:同值跳过,
+    # 异值按"后章修订"更新并留痕(first_chapter 不动);--replace 不撤销事实
+    # (重写章通常重立同样数字;值变了由新分析的 facts 走修订留痕)。
+    fctj = project / "ledger" / "facts.json"
+    facts = load_json(fctj, default={"facts": []})["facts"]
+    ferrors = []
+    fact_new = 0
+    fact_upd = 0
+    for f in a.get("facts") or []:
+        if not isinstance(f, dict):
+            ferrors.append("facts 条目必须是对象(含 name/value)")
+            continue
+        name = (f.get("name") or "").strip()
+        value = str(f.get("value") or "").strip()
+        if not name:
+            ferrors.append("facts 条目缺 name")
+            continue
+        if not value:
+            ferrors.append(f"数字事实「{name}」缺 value(没有值的不是事实)")
+            continue
+        exist = next((x for x in facts if x.get("name") == name), None)
+        if exist is None:
+            facts.append({"id": next_id(facts, "FC"), "name": name, "value": value,
+                          "category": (f.get("category") or "").strip(),
+                          "note": f.get("note", ""), "first_chapter": n,
+                          "updated_chapter": None})
+            fact_new += 1
+        elif exist.get("value") != value:
+            old = exist.get("value")
+            exist["value"] = value
+            exist["updated_chapter"] = n
+            if f.get("note"):
+                exist["note"] = f["note"]
+            fact_upd += 1
+            applied.append(f"数字事实修订:{name}:「{old}」→「{value}」(第{n}章)")
+
+    if ferrors:
+        print("— 校验失败,未写入任何文件 —")
+        for e in ferrors:
+            print(f"  ✗ {e}")
+        return 1
+
     # ---- 写入 ----
     save_json(cj, {"characters": chars})
     if new_terms or revealed:
@@ -533,6 +585,12 @@ def main() -> int:
             applied.append(f"术语入账 {len(new_terms)} 条:" + "、".join(t["term"] for t in new_terms[:5]))
         if revealed:
             applied.append(f"术语标记已揭示 {len(revealed)} 条")
+    if fact_new or fact_upd:
+        save_json(fctj, {"facts": facts})
+        if fact_new:
+            applied.append(f"数字事实入账 {fact_new} 条(ledger/facts.json)")
+        if fact_upd:
+            applied.append(f"数字事实修订 {fact_upd} 条")
     # 事件溯源:每章落一份角色状态快照(章末状态),供 rebuild_state 重放/时点查询
     snap_dir = project / "ledger" / "snapshots"
     snap_dir.mkdir(parents=True, exist_ok=True)

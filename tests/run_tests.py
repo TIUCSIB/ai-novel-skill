@@ -1317,6 +1317,266 @@ class Regression(unittest.TestCase):
                          "缺 type 应聚合成一条,不逐章刷屏")
         self.assertIn("1、2、3、4、5", p_missing.stdout)
 
+    # ---------- t44: 数字事实账 facts(先登记后动笔) ----------
+    def test_t44_facts_ledger(self):
+        proj = self._fresh_project("facts")
+        self._write_to(proj, "chapters/001.md", "# 第1章 测试\n\n" + CH1_TEXT)
+        self._write_to(proj, "outline/chapter-001.md", "# 第1章 测试\n出场角色: 主角\n")
+        a1 = json.loads(json.dumps(CH1_ANALYSIS))
+        a1["facts"] = [
+            {"name": "主角年龄", "category": "年龄", "value": "二十岁"},
+            {"name": "灭国之乱", "category": "时间线", "value": "十一年前", "note": "背景"},
+        ]
+        self._write_to(proj, "analysis/001.json", json.dumps(a1, ensure_ascii=False))
+        p = run("apply_analysis.py", proj, 1)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("数字事实入账 2 条", p.stdout)
+        facts = json.loads((proj / "ledger" / "facts.json").read_text(encoding="utf-8"))["facts"]
+        self.assertEqual(len(facts), 2)
+        self.assertEqual(facts[0]["id"], "FC-001")
+        self.assertEqual(facts[0]["first_chapter"], 1)
+        self.assertIsNone(facts[0].get("updated_chapter"))
+
+        # 第 2 章:同值重登记不覆盖;异值按"后章修订"留痕
+        self._write_to(proj, "chapters/002.md", "# 第2章 测试\n\n" + CH1_TEXT)
+        self._write_to(proj, "outline/chapter-002.md", "# 第2章 测试\n出场角色: 主角\n")
+        a2 = json.loads(json.dumps(CH1_ANALYSIS))
+        a2["chapter"] = 2
+        a2["title"] = "第2章 测试"
+        a2["facts"] = [
+            {"name": "主角年龄", "value": "二十一岁"},   # 异值 → 修订
+            {"name": "灭国之乱", "value": "十一年前"},   # 同值 → 跳过
+        ]
+        self._write_to(proj, "analysis/002.json", json.dumps(a2, ensure_ascii=False))
+        p2 = run("apply_analysis.py", proj, 2)
+        self.assertEqual(p2.returncode, 0, p2.stdout + p2.stderr)
+        self.assertIn("数字事实修订:主角年龄:「二十岁」→「二十一岁」(第2章)", p2.stdout)
+        facts = json.loads((proj / "ledger" / "facts.json").read_text(encoding="utf-8"))["facts"]
+        self.assertEqual(len(facts), 2, "同值重登记不应新增条目")
+        zt = next(f for f in facts if f["name"] == "主角年龄")
+        self.assertEqual(zt["value"], "二十一岁")
+        self.assertEqual(zt["first_chapter"], 1, "修订不改首现章")
+        self.assertEqual(zt["updated_chapter"], 2)
+
+        # --replace 不撤销数字事实(重写章通常重立同样数字)
+        p3 = run("apply_analysis.py", proj, 2, "--replace")
+        self.assertEqual(p3.returncode, 0, p3.stdout + p3.stderr)
+        facts = json.loads((proj / "ledger" / "facts.json").read_text(encoding="utf-8"))["facts"]
+        self.assertEqual(len(facts), 2)
+
+        # 非法:缺 value 的条目整体不落盘
+        a_bad = json.loads(json.dumps(CH1_ANALYSIS))
+        a_bad["chapter"] = 2
+        a_bad["facts"] = [{"name": "赏金数目"}]
+        self._write_to(proj, "analysis/002.json", json.dumps(a_bad, ensure_ascii=False))
+        p_bad = run("apply_analysis.py", proj, 2, "--replace")
+        self.assertEqual(p_bad.returncode, 1)
+        self.assertIn("缺 value", p_bad.stdout)
+        facts = json.loads((proj / "ledger" / "facts.json").read_text(encoding="utf-8"))["facts"]
+        self.assertEqual(len(facts), 2, "校验失败时 facts 原样不动")
+
+        # 反查与上下文包
+        self._write_to(proj, "outline/chapter-003.md", "# 第3章 测试\n出场角色: 主角\n")
+        p_q = run("query_ledger.py", proj, "-f", "主角年龄")
+        self.assertEqual(p_q.returncode, 0, p_q.stderr)
+        self.assertIn("二十一岁", p_q.stdout)
+        self.assertIn("第2章修订", p_q.stdout)
+        p_pack = run("context_pack.py", proj, 3)
+        self.assertEqual(p_pack.returncode, 0, p_pack.stderr)
+        self.assertIn("数字事实卡", p_pack.stdout)
+        self.assertIn("主角年龄", p_pack.stdout, "计划命中的事实应置顶展示")
+        self.assertIn("共 2 条", p_pack.stdout, "未命中的应给条数与反查提示")
+
+    # ---------- t45: 真人参考区间(只对照不判罪) ----------
+    def test_t45_human_reference_lines(self):
+        proj = self._fresh_project("humanref")
+        paras = [f"他走到第{i}排的窗边，看外面的雨还在下。屋檐的水滴在青石上，一声接一声。"
+                 for i in range(25)]
+        text = "# 第1章 参考\n\n" + "\n\n".join(paras) + "\n"
+        self._write_to(proj, "chapters/001.md", text)
+        p = run("style_stats.py", proj, "--chapter", 1)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("中位", p.stdout)
+        self.assertIn("真人参考中位 ≈38.9", p.stdout, "句长中位行应带真人锚点")
+        self.assertIn("短段(≤20字)占比", p.stdout)
+        self.assertIn("真人参考 ≈19%", p.stdout, "短段占比行应带真人锚点")
+        self.assertIn("真人参考 ≈1.1/千字", p.stdout, "省略号行应带真人锚点")
+
+    # ---------- t46: taste_audit 桥段与收尾限额 ----------
+    def test_t46_bridge_caps(self):
+        proj = self._fresh_project("bridge")
+        gesture = "他摩挲着那枚残玉，半晌没有说话。"
+        endings = {
+            1: "这个世界从来不肯为谁停下。",
+            2: "他把门关上，插好了闩。",
+            3: "雨还在下。",
+        }
+        for n in (1, 2, 3):
+            body = (f"# 第{n}章 测试\n\n她熬了粥端来，替他掖好被角。\n"
+                    + gesture * 2 + "\n"
+                    + f"门外传来第{n}次脚步声。\n\n" + endings[n] + "\n")
+            self._write_to(proj, f"chapters/{n:03d}.md", body)
+        p = run("taste_audit.py", proj)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("桥段与收尾限额", p.stdout)
+        self.assertIn("① 关怀类重复桥段", p.stdout)
+        self.assertIn("熬了粥端来", p.stdout, "关怀桥段应给出上下文摘录")
+        self.assertIn("② 格言式收尾", p.stdout)
+        self.assertIn("这个世界从来不肯为谁停下", p.stdout, "哲理收尾应被列出")
+        self.assertNotIn("插好了闩", p.stdout, "动作收尾不应被当成格言")
+        self.assertIn("「摩挲着那」", p.stdout, "跨章重复的标志小动作短语应被列出")
+        self.assertIn("/ 3 章", p.stdout)
+
+    # ---------- t47: 定稿状态机 finalize / 锁定 / 篡改检测 / 解除 ----------
+    def _git(self, proj: Path, *args: str):
+        return subprocess.run(["git", *args], cwd=proj, capture_output=True,
+                              text=True, encoding="utf-8", errors="replace", timeout=60)
+
+    def test_t47_finalize_lifecycle(self):
+        import shutil as _sh
+        proj = self._fresh_project("finalize")
+        has_git = bool(_sh.which("git")) and (proj / ".git").exists()
+        if has_git:
+            self._git(proj, "config", "user.email", "test@example.com")
+            self._git(proj, "config", "user.name", "测试")
+
+        # 达到定稿前置:正文+计划+分析+评审(85 分、≥2 条必须修改)+ 回写 + 提交
+        self._write_to(proj, "chapters/001.md", "# 第1章 测试\n\n" + CH1_TEXT)
+        self._write_to(proj, "outline/chapter-001.md", "# 第1章 测试\n出场角色: 主角\n")
+        self._write_to(proj, "analysis/001.json", json.dumps(CH1_ANALYSIS, ensure_ascii=False))
+        self._write_to(proj, "reviews/001.md",
+                       "# 第1章审校\n得分: 85\n\n[必须修改] 例一(带原文举证:「文字内容」)。\n"
+                       "[必须修改] 例二(带原文举证:「文字内容」)。\n")
+        p = run("apply_analysis.py", proj, 1)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        if has_git:
+            self.assertEqual(self._git(proj, "add", "-A").returncode, 0)
+            self.assertEqual(self._git(proj, "commit", "-m", "ch1").returncode, 0)
+
+        # 未过前置的场景先行验证:删掉评审文件应拒绝
+        (proj / "reviews" / "001.md").rename(proj / "reviews" / "001.md.bak")
+        p_no_review = run("finalize.py", proj, 1)
+        self.assertEqual(p_no_review.returncode, 1)
+        self.assertIn("reviews/001.md 不存在", p_no_review.stdout)
+        (proj / "reviews" / "001.md.bak").rename(proj / "reviews" / "001.md")
+
+        # 正式定稿:副本 + book.json + tag
+        p_fin = run("finalize.py", proj, 1)
+        self.assertEqual(p_fin.returncode, 0, p_fin.stdout + p_fin.stderr)
+        book = json.loads(self._read_to(proj, "book.json"))
+        self.assertEqual(book["finalized_chapters"], [1])
+        cur = (proj / "chapters" / "001.md").read_text(encoding="utf-8")
+        bak = (proj / "chapters" / "final" / "001.md").read_text(encoding="utf-8")
+        self.assertEqual(cur, bak, "定稿副本应与正文逐字节一致")
+        if has_git:
+            self.assertEqual(self._git(proj, "tag", "-l", "final-001").stdout.strip(),
+                             "final-001")
+        p_list = run("finalize.py", proj, "--list")
+        self.assertIn("已定稿 1 章", p_list.stdout)
+
+        # 锁定生效:定稿章 --replace 与普通回写都拒绝
+        for extra in ((), ("--replace",)):
+            p_lock = run("apply_analysis.py", proj, 1, *extra)
+            self.assertEqual(p_lock.returncode, 1, f"定稿章应拒绝回写({extra})")
+            self.assertIn("已定稿", p_lock.stderr)
+
+        # 篡改检测:正文被改 → check_ledger ERROR;--list 给警示
+        (proj / "chapters" / "001.md").write_text(cur + "\n\n偷偷加一句。\n", encoding="utf-8")
+        p_tamper = run("check_ledger.py", proj, "--chapter", 1)
+        self.assertEqual(p_tamper.returncode, 1)
+        self.assertIn("与定稿副本不一致", p_tamper.stdout)
+        p_list2 = run("finalize.py", proj, "--list")
+        self.assertIn("不一致", p_list2.stdout)
+        (proj / "chapters" / "001.md").write_text(cur, encoding="utf-8")  # 恢复
+
+        # 解除定稿:无 --confirm 只预览不执行;带 --confirm 才落
+        p_prev = run("finalize.py", proj, 1, "--unfinalize")
+        self.assertEqual(p_prev.returncode, 1)
+        self.assertIn("未执行", p_prev.stdout)
+        self.assertIn("必须先获得用户明确授权", p_prev.stdout)
+        book = json.loads(self._read_to(proj, "book.json"))
+        self.assertEqual(book["finalized_chapters"], [1], "预览不得改动状态")
+        p_un = run("finalize.py", proj, 1, "--unfinalize", "--confirm")
+        self.assertEqual(p_un.returncode, 0, p_un.stdout + p_un.stderr)
+        book = json.loads(self._read_to(proj, "book.json"))
+        self.assertEqual(book["finalized_chapters"], [])
+        self.assertTrue((proj / "chapters" / "final" / "001.md").exists(),
+                        "解除定稿应保留副本")
+
+        # 解除后重写通道恢复:--replace 可用;再定稿时旧副本自动转版本文件
+        p_re = run("apply_analysis.py", proj, 1, "--replace")
+        self.assertEqual(p_re.returncode, 0, p_re.stdout + p_re.stderr)
+        if has_git:
+            self.assertEqual(self._git(proj, "add", "-A").returncode, 0)
+            self.assertEqual(self._git(proj, "commit", "-m", "ch1 rewrite").returncode, 0)
+        p_fin2 = run("finalize.py", proj, 1)
+        self.assertEqual(p_fin2.returncode, 0, p_fin2.stdout + p_fin2.stderr)
+        self.assertTrue((proj / "chapters" / "final" / "001.v1.md").exists(),
+                        "重复定稿应把旧副本转版本文件")
+        self.assertTrue((proj / "chapters" / "final" / "001.md").exists())
+
+    def _read_to(self, proj: Path, rel: str) -> str:
+        return (proj / rel).read_text(encoding="utf-8")
+
+    # ---------- t48: 多书语料分析 corpus_stats + 专属锚点替换 ----------
+    def test_t48_corpus_stats(self):
+        import shutil as _sh
+        import tempfile as _tf
+        base = Path(_tf.mkdtemp(prefix="ainovel-corpus-")) / "style-sample"
+        base.mkdir(parents=True)
+        self.addCleanup(lambda: _sh.rmtree(base.parent, ignore_errors=True))
+        # 书A:带章标记,长句+对话;书B:无章标记,短句+重复动作短语
+        a = []
+        for i in range(1, 6):
+            a.append(f"第{i}章 试探")
+            a.append("他沿着河岸慢慢走过去，看见对岸的芦苇在风里伏成一片，压得很低。" * 3)
+            a.append("“你就是新来的账房？”她问，把茶碗推到他面前，又不看他。")
+            a.append("他接了茶，没有喝，只把碗沿转了半圈，说：“账上短的那一笔，我知道在哪。”")
+        (base / "书A.txt").write_text("\n\n".join(a), encoding="utf-8")
+        b = []
+        for i in range(30):
+            b.append("雨还在下。她把伞收了，靠在门边，等着。他摩挲着那枚残玉，半晌没有说话。")
+        (base / "书B.md").write_text("\n\n".join(b), encoding="utf-8")
+
+        p = run("corpus_stats.py", base.parent)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("跨书对照表", p.stdout)
+        self.assertIn("书A", p.stdout)
+        self.assertIn("书B", p.stdout)
+        self.assertIn("类型基线", p.stdout)
+        self.assertIn("口头禅", p.stdout)
+        self.assertIn("章长中位", p.stdout)
+        self.assertNotIn("还在下他", p.stdout, "4-gram 不得跨句拼接")
+        self.assertRegex(p.stdout, r"\| 章数 \| 5 \| 0 \| 5 \|",
+                         "章数基线只算带章标记的语料")
+
+        # --write-ref → style/human-ref.json → style_stats 标签与数值替换
+        proj = self._fresh_project("corpusref")
+        paras = [f"他走到第{i}排的窗边，看外面的雨还在下。屋檐的水滴在青石上，一声接一声。"
+                 for i in range(25)]
+        self._write_to(proj, "chapters/001.md", "# 第1章 参考\n\n" + "\n\n".join(paras) + "\n")
+        p_ref = run("corpus_stats.py", base.parent, "--write-ref", proj)
+        self.assertEqual(p_ref.returncode, 0, p_ref.stdout + p_ref.stderr)
+        ref = json.loads(self._read_to(proj, "style/human-ref.json"))
+        self.assertIn("sent_median", ref)
+        p_ss = run("style_stats.py", proj, "--chapter", 1)
+        self.assertEqual(p_ss.returncode, 0, p_ss.stderr)
+        self.assertIn("本书语料基线", p_ss.stdout, "覆盖后标签应变为本书语料基线")
+        self.assertNotIn("真人参考", p_ss.stdout)
+        self.assertIn(f"≈{ref['sent_median']:g}", p_ss.stdout, "锚点数值应随语料基线替换")
+
+        # 坏基线护栏:荒谬值被拒,回退内置锚点
+        self._write_to(proj, "style/human-ref.json",
+                       json.dumps({"sent_median": 999, "short_para": 0.2, "ellipsis": 1.0}))
+        p_bad = run("style_stats.py", proj, "--chapter", 1)
+        self.assertIn("真人参考", p_bad.stdout, "非法基线应回退内置锚点")
+
+        # 项目缺语料目录时给出可操作的错误
+        proj2 = self._fresh_project("corpusmissing")
+        p_miss = run("corpus_stats.py", proj2)
+        self.assertEqual(p_miss.returncode, 1)
+        self.assertIn("material/style-sample", p_miss.stderr)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
