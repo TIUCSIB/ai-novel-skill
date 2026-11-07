@@ -299,6 +299,9 @@ def main() -> int:
         "completed_chapters": [],
         "chapter_word_counts": {},
         "schema_version": 2,
+        # 模型路由(v3.16):派 subagent 的任务按项目指定模型,一次配置全书生效。
+        # 空值 = 未配置(按客户端默认派发);值 = 模型名或自然语言描述(如"中档,别用写作同款")。
+        "routing": {"blind_review": "", "reader_sim": "", "teardown": ""},
         "created": today(),
         "updated": today(),
     }
@@ -308,7 +311,7 @@ def main() -> int:
         old = load_json(bj)
         for k in ("title", "genre", "logline", "target_chapters", "words_per_chapter",
                   "phase", "current_chapter", "completed_chapters", "chapter_word_counts",
-                  "schema_version", "created"):
+                  "schema_version", "routing", "created"):
             if k in old:
                 book[k] = old[k]
         if "schema_version" not in old:

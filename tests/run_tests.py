@@ -1577,6 +1577,24 @@ class Regression(unittest.TestCase):
         self.assertEqual(p_miss.returncode, 1)
         self.assertIn("material/style-sample", p_miss.stderr)
 
+    # ---------- t49: 模型路由配置(book.json.routing) ----------
+    def test_t49_routing_config(self):
+        proj = self._fresh_project("routing")
+        book = json.loads(self._read_to(proj, "book.json"))
+        self.assertEqual(book["routing"],
+                         {"blind_review": "", "reader_sim": "", "teardown": ""},
+                         "init 必须自带 routing 槽位(空=未配置,派发按客户端默认)")
+        # 用户配置后 --force 不得冲掉路由
+        book["routing"]["blind_review"] = "中档,与写作不同族"
+        self._write_to(proj, "book.json", json.dumps(book, ensure_ascii=False))
+        p = run("init_project.py", "--dir", proj, "--title", "测试新书", "--genre", "玄幻",
+                "--chapters", "30", "--words", "1500-2500", "--force")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        book2 = json.loads(self._read_to(proj, "book.json"))
+        self.assertEqual(book2["routing"]["blind_review"], "中档,与写作不同族",
+                         "--force 保留用户已配置的路由")
+        self.assertEqual(book2["title"], "测试新书", "--force 元数据保留逻辑不受影响")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -35,6 +35,7 @@
 | `current_chapter` | 下一章要写的章号(= 已完成最大章 + 1) |
 | `completed_chapters` | 已完成并回写台账的章号列表 |
 | `finalized_chapters` | **定稿章号列表(选填,v3.14)**:用户确认"不再改"的章。定稿 = 只读 —— `apply_analysis`(含 `--replace`)直接拒绝、`check_ledger` 每次核对正文与 `chapters/final/NNN.md` 副本一致(被改动即 ERROR);改动需用户授权后 `finalize.py N --unfinalize --confirm` 解除。旧项目缺省该字段 = 无定稿章,一切如旧 |
+| `routing` | **模型路由(选填,v3.16)**:`{"blind_review": "", "reader_sim": "", "teardown": ""}` —— 派 subagent 的任务按项目指定模型,值为模型名或自然语言描述;空 = 按客户端默认。派发优先级:用户当场指示 > routing > 客户端默认(见 `references/model-routing.md`)。此字段由用户/主代理直接编辑,不属于台账回写管辖;`--force` 保留已有配置 |
 | `schema_version` | 台账格式版本。新项目为 `2`;旧项目缺省时不强制新检查,`--force` 也不会自动升级。手动补 `2` 后,已完成章缺 `type` 会 WARN |
 
 ---
