@@ -93,7 +93,7 @@ python ~/.agents/skills/ai-novel/tests/run_tests.py
 └── export/              # 导出产物
 ```
 
-纯文本 + JSON，无厂商锁定，随时可以换 agent 客户端继续写，也可以直接把 `chapters/` 拷走。
+纯文本 + JSON，无厂商锁定，随时可以换 agent 客户端继续写，也可以直接把 `chapters/` 拷走。还支持**跨客户端分工**：比如用 A 客户端（配强模型）写作、B 客户端审稿修稿定稿 —— 项目即 git 仓库，交接前 commit、接手先跑 `loop_status` 看断点，谁改谁跑台账回写；跨客户端盲审没见过写作过程，独立性反而更强（SKILL「分工模式」节有完整协议）。
 
 ## 能力一览
 
